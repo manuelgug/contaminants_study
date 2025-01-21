@@ -132,12 +132,12 @@ colnames(allele_df) <- c("allele", "count")
 allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(-allele_df$count)])
 
 # Create a ggplot histogram
-ggplot(allele_df, aes(x = allele, y = count)) +
+ggplot(allele_df[allele_df$count > 1,], aes(x = allele, y = count)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "black") +
   labs(
     x = "Allele",
     y = "Count",
-    title = ""
+    title = "Alleles with >1 appearance as contaminants"
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
@@ -243,6 +243,22 @@ ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
   theme(legend.title = element_blank())+
   guides(fill = guide_legend(ncol = 1))
 
+ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black") +
+  scale_fill_manual(values = color_palette) +
+  labs(
+    title = "",
+    x = "In-sample allele frequency",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank())+
+  guides(fill = guide_legend(ncol = 1))+
+  theme(
+    legend.position = "none"
+  ) +
+  facet_wrap(~run, scales = "free_y")
+
 
 # controls with contaminant alleles that have a freq = 1
 CONTAMINATED_CONTROLS_FREQ1 <- length(unique(CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]$sampleID))
@@ -290,6 +306,15 @@ rownames(contam_procedence_results) <- NULL
 
 print(contam_procedence_results)
 
+ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples)) +
+  geom_histogram(bins = 30, color = "black", fill = "blue", alpha = 0.7) +
+  labs(
+    title = "",
+    x = "Percentage of Contaminants in Field Samples",
+    y = "Count"
+  ) +
+  theme_minimal()
+
 
 
 # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
@@ -304,5 +329,16 @@ allele_counts <- controls_data %>%
 
 allele_counts$missing_alleles <-  n_expected_alleles - allele_counts$n_correctly_sequenced_ref_alleles
 
-hist(allele_counts$missing_alleles, breaks = 30)
+allele_counts <- allele_counts %>%
+  separate(sampleID, into = c("sampleID", "run"), sep = "__")
+
+ggplot(allele_counts, aes(x = missing_alleles)) +
+  geom_histogram(bins = 5, color = "black", fill = "blue", alpha = 0.7) +
+  labs(
+    title = "",
+    x = "Missing Alleles",
+    y = "Count"
+  ) +
+  theme_minimal()+
+  facet_wrap(~run)
 
