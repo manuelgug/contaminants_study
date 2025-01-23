@@ -334,7 +334,7 @@ for (sample in SAMPLES) {
     run = run,
     sampleID = sample,
     n_contams_in_control = n_contams_in_control,
-    percentage_contams_in_field_samples = percentage_contams_in_field_samples
+    percentage_contams_in_field_samples_from_run = percentage_contams_in_field_samples
   )
 }
 
@@ -345,7 +345,7 @@ rownames(contam_procedence_results) <- NULL
 
 print(contam_procedence_results)
 
-# ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples)) +
+# ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples_from_run)) +
 #   geom_histogram(bins = 50, color = "black", fill = "blue", alpha = 0.7) +
 #   labs(
 #     title = "",
@@ -354,7 +354,7 @@ print(contam_procedence_results)
 #   ) +
 #   theme_minimal()
 
-ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples, fill = run)) +
+ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples_from_run, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
