@@ -311,7 +311,7 @@ ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples)) 
   labs(
     title = "",
     x = "Percentage of Contaminants in Field Samples",
-    y = "Controls"
+    y = "# Controls"
   ) +
   theme_minimal()
 
@@ -337,7 +337,7 @@ ggplot(allele_counts, aes(x = missing_alleles)) +
   labs(
     title = "",
     x = "Missing Alleles",
-    y = "Count"
+    y = "# Controls"
   ) +
   theme_minimal()+
   facet_wrap(~run)
