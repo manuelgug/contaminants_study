@@ -93,7 +93,7 @@ merged_dfs <- merged_dfs %>%
   ungroup() 
 
 # remove icae1 run (cARLA); exclude bachmi
-merged_dfs <- merged_dfs[!grepl("ICAE_NextSeq01|MDACD_NextSeq02|ASINT_NextSeq04", merged_dfs$sampleID, ignore.case = TRUE),]
+#merged_dfs <- merged_dfs[!grepl("ICAE_NextSeq01|MDACD_NextSeq02|ASINT_NextSeq04", merged_dfs$sampleID, ignore.case = TRUE),]
 
 
 # merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$allele),] #remove alleles with I (insertion)
@@ -154,7 +154,7 @@ n_contams_per_run
 n_contams_per_run <- n_contams_per_run %>%
   mutate(sampleID = factor(sampleID, levels = sampleID[order(-n_contams)]))
 
-set.seed(420)
+set.seed(42069)
 
 num_colors <- length(unique(n_contams_per_run$run))
 color_palette <- rgb(runif(num_colors), runif(num_colors), runif(num_colors))
@@ -175,7 +175,7 @@ ggplot(n_contams_per_run, aes(x = sampleID, y = n_contams, fill = run)) +
     axis.text.x = element_text(angle = 90, hjust = 1),
     legend.title = element_blank()
   ) +
-  guides(fill = guide_legend(ncol = 1))
+  guides(fill = guide_legend(ncol = 2))
 
 
 #check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
@@ -307,11 +307,11 @@ rownames(contam_procedence_results) <- NULL
 print(contam_procedence_results)
 
 ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples)) +
-  geom_histogram(bins = 30, color = "black", fill = "blue", alpha = 0.7) +
+  geom_histogram(bins = 50, color = "black", fill = "blue", alpha = 0.7) +
   labs(
     title = "",
     x = "Percentage of Contaminants in Field Samples",
-    y = "Count"
+    y = "Controls"
   ) +
   theme_minimal()
 
@@ -333,7 +333,7 @@ allele_counts <- allele_counts %>%
   separate(sampleID, into = c("sampleID", "run"), sep = "__")
 
 ggplot(allele_counts, aes(x = missing_alleles)) +
-  geom_histogram(bins = 5, color = "black", fill = "blue", alpha = 0.7) +
+  geom_histogram(bins = 40, color = "black", fill = "blue", alpha = 0.7) +
   labs(
     title = "",
     x = "Missing Alleles",
