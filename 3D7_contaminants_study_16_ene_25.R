@@ -184,8 +184,9 @@ CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %
 #do these come from the cism contaminant strain?
 CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
 
+##
 #visualize similaritites of samples with many contaminants through heatmap to track potential origin
-SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run[n_contams_per_run$n_contams > 10,]$sampleID
+SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run[n_contams_per_run$n_contams > 0,]$sampleID # SELECT MINIMUM AMOUNF OF CONTAMINANTS
 
 # Createreshape2# Create a binary matrix for allele presence/absence
 allele_matrix <- CONTAMINANTS[CONTAMINANTS$sampleID %in% SAMPLES_WITH_MANY_CONTAMS,] %>%
@@ -208,7 +209,45 @@ dist_df <- dist_df %>%
 # Plot heatmap using ggplot2
 ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
-  scale_fill_gradient(low = "orange", high = "blue") +
+  scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
+  labs(
+    title = "",
+    x = "",
+    y = "",
+    fill = "Jaccard's Distance"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    axis.text.y = element_text(angle = 0, hjust = 1)
+  )
+
+##
+#visualize similaritites of samples with many contaminants through heatmap to track potential origin
+SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run[n_contams_per_run$n_contams > 10,]$sampleID # SELECT MINIMUM AMOUNF OF CONTAMINANTS
+
+# Createreshape2# Create a binary matrix for allele presence/absence
+allele_matrix <- CONTAMINANTS[CONTAMINANTS$sampleID %in% SAMPLES_WITH_MANY_CONTAMS,] %>%
+  select(sampleID, locus) %>%
+  distinct() %>%
+  mutate(present = 1) %>%
+  spread(key = locus, value = present, fill = 0) %>%
+  column_to_rownames("sampleID")
+
+# Calculate the Jaccard distance between sampleIDs
+dist_matrix <- vegdist(allele_matrix, method = "jaccard")
+
+# Convert distance matrix into a data frame for ggplot
+dist_df <- as.data.frame(as.matrix(dist_matrix))
+dist_df$SampleID1 <- rownames(dist_df)
+dist_df <- melt(dist_df, id.vars = "SampleID1")
+dist_df <- dist_df %>%
+  rename(SampleID2 = variable, distance = value)
+
+# Plot heatmap using ggplot2
+ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
+  geom_tile() +
+  scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
     title = "",
     x = "",
@@ -249,7 +288,7 @@ ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
   labs(
     title = "",
     x = "In-sample allele frequency",
-    y = "Count"
+    y = "Non-reference alleles"
   ) +
   theme_minimal() +
   theme(legend.title = element_blank())+
@@ -306,15 +345,31 @@ rownames(contam_procedence_results) <- NULL
 
 print(contam_procedence_results)
 
-ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples)) +
-  geom_histogram(bins = 50, color = "black", fill = "blue", alpha = 0.7) +
+# ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples)) +
+#   geom_histogram(bins = 50, color = "black", fill = "blue", alpha = 0.7) +
+#   labs(
+#     title = "",
+#     x = "Percentage of Contaminants in Field Samples",
+#     y = "# Controls"
+#   ) +
+#   theme_minimal()
+
+ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples, fill = run)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = color_palette) +
   labs(
     title = "",
-    x = "Percentage of Contaminants in Field Samples",
-    y = "# Controls"
+    x = "3D7 Controls",
+    y = "% Contaminants in Field Samples",
+    fill = "Run"
   ) +
-  theme_minimal()
-
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.title = element_blank()
+  )+
+  facet_wrap(~run, scales = "free_x")+
+  guides(fill = guide_legend(ncol = 1))
 
 
 # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
