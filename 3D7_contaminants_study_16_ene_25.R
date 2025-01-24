@@ -39,13 +39,6 @@ for (dir in filtered_dirs) {
 #merge genomic data into one df
 merged_dfs <- bind_rows(list_of_dfs)
 
-# keep 1A amps
-merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
-
-
-#create allele column
-merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
-
 
 # identify sampleID with >=50 loci having >= 100 reads (NANNA'S AND SIMONE'S FILTER)
 good_sampleID <- merged_dfs %>%
@@ -65,6 +58,14 @@ good_sampleID <- merged_dfs %>%
 
 # Keep good quality samples
 merged_dfs <- merged_dfs[merged_dfs$sampleID %in% good_sampleID, ]
+
+
+# keep 1A amps
+# merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
+
+
+#create allele column
+merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
 
 # add run name to sampleID
 merged_dfs$sampleID <- paste0(merged_dfs$sampleID, "__", merged_dfs$run)
@@ -199,12 +200,22 @@ allele_matrix <- CONTAMINANTS[CONTAMINANTS$sampleID %in% SAMPLES_WITH_MANY_CONTA
 # Calculate the Jaccard distance between sampleIDs
 dist_matrix <- vegdist(allele_matrix, method = "jaccard")
 
+# Perform hierarchical clustering
+hc <- hclust(dist_matrix)
+
+# Get the order of samples based on clustering
+ordered_samples <- hc$labels[hc$order]
+
 # Convert distance matrix into a data frame for ggplot
 dist_df <- as.data.frame(as.matrix(dist_matrix))
 dist_df$SampleID1 <- rownames(dist_df)
 dist_df <- melt(dist_df, id.vars = "SampleID1")
 dist_df <- dist_df %>%
-  rename(SampleID2 = variable, distance = value)
+  rename(SampleID2 = variable, distance = value) %>%
+  mutate(
+    SampleID1 = factor(SampleID1, levels = ordered_samples),
+    SampleID2 = factor(SampleID2, levels = ordered_samples)
+  )
 
 # Plot heatmap using ggplot2
 ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
@@ -221,6 +232,7 @@ ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
     axis.text.x = element_text(angle = 90, hjust = 1),
     axis.text.y = element_text(angle = 0, hjust = 1)
   )
+
 
 ##
 #visualize similaritites of samples with many contaminants through heatmap to track potential origin
@@ -237,12 +249,22 @@ allele_matrix <- CONTAMINANTS[CONTAMINANTS$sampleID %in% SAMPLES_WITH_MANY_CONTA
 # Calculate the Jaccard distance between sampleIDs
 dist_matrix <- vegdist(allele_matrix, method = "jaccard")
 
+# Perform hierarchical clustering
+hc <- hclust(dist_matrix)
+
+# Get the order of samples based on clustering
+ordered_samples <- hc$labels[hc$order]
+
 # Convert distance matrix into a data frame for ggplot
 dist_df <- as.data.frame(as.matrix(dist_matrix))
 dist_df$SampleID1 <- rownames(dist_df)
 dist_df <- melt(dist_df, id.vars = "SampleID1")
 dist_df <- dist_df %>%
-  rename(SampleID2 = variable, distance = value)
+  rename(SampleID2 = variable, distance = value) %>%
+  mutate(
+    SampleID1 = factor(SampleID1, levels = ordered_samples),
+    SampleID2 = factor(SampleID2, levels = ordered_samples)
+  )
 
 # Plot heatmap using ggplot2
 ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
@@ -259,6 +281,7 @@ ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
     axis.text.x = element_text(angle = 90, hjust = 1),
     axis.text.y = element_text(angle = 0, hjust = 1)
   )
+
 
 
 
@@ -354,7 +377,28 @@ print(contam_procedence_results)
 #   ) +
 #   theme_minimal()
 
+# % contaminants in field samples
 ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples_from_run, fill = run)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = color_palette) +
+  labs(
+    title = "",
+    x = "3D7 Controls",
+    y = "% Contaminants in Field Samples",
+    fill = "Run"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.title = element_blank()
+  )+
+  facet_wrap(~run, scales = "free_x")+
+  guides(fill = guide_legend(ncol = 1))
+
+# number of contaminants in field samples
+contam_procedence_results$n_contams_in_field_samples <- contam_procedence_results$n_contams_in_control * (contam_procedence_results$percentage_contams_in_field_samples_from_run/100)
+
+ggplot(contam_procedence_results, aes(x = sampleID, y = n_contams_in_field_samples, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
