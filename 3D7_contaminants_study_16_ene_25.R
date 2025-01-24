@@ -61,7 +61,7 @@ merged_dfs <- merged_dfs[merged_dfs$sampleID %in% good_sampleID, ]
 
 
 # keep 1A amps
-# merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
+merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
 
 
 #create allele column
@@ -179,11 +179,11 @@ ggplot(n_contams_per_run, aes(x = sampleID, y = n_contams, fill = run)) +
   guides(fill = guide_legend(ncol = 2))
 
 
-#check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
-CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
-
-#do these come from the cism contaminant strain?
-CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
+# #check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
+# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
+# 
+# #do these come from the cism contaminant strain?
+# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
 
 ##
 #visualize similaritites of samples with many contaminants through heatmap to track potential origin
@@ -431,13 +431,21 @@ allele_counts$missing_alleles <-  n_expected_alleles - allele_counts$n_correctly
 allele_counts <- allele_counts %>%
   separate(sampleID, into = c("sampleID", "run"), sep = "__")
 
-ggplot(allele_counts, aes(x = missing_alleles)) +
-  geom_histogram(bins = 40, color = "black", fill = "blue", alpha = 0.7) +
+
+ggplot(allele_counts, aes(x = sampleID, y = missing_alleles, fill = run)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = color_palette) +
   labs(
     title = "",
-    x = "Missing Alleles",
-    y = "# Controls"
+    x = "3D7 Controls",
+    y = "# Missing Alleles",
+    fill = "Run"
   ) +
-  theme_minimal()+
-  facet_wrap(~run)
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.title = element_blank()
+  )+
+  facet_wrap(~run, scales = "free_x")+
+  guides(fill = guide_legend(ncol = 1))
 
