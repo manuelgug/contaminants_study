@@ -130,18 +130,48 @@ ALLELE_COUNT <- table(CONTAMINANTS$allele)
 allele_df <- as.data.frame(ALLELE_COUNT)
 colnames(allele_df) <- c("allele", "count")
 
-allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(-allele_df$count)])
+allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(allele_df$count)])
 
 # Create a ggplot histogram
-ggplot(allele_df[allele_df$count > 1,], aes(x = allele, y = count)) +
+contam_alleles <- ggplot(allele_df[allele_df$count > 1,], aes(x = allele, y = count)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "black") +
   labs(
     x = "Allele",
     y = "Count",
-    title = "Alleles with >1 appearance as contaminants"
+    title = ""
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  coord_flip()
+
+contam_alleles
+
+ggsave("contam_alleles.png", contam_alleles, dpi = 300, height = 20, width = 15, bg = "white")
+
+
+
+LOCI_COUNT <- table(CONTAMINANTS$locus)
+loci_df <- as.data.frame(LOCI_COUNT)
+colnames(loci_df) <- c("locus", "count")
+
+loci_df$locus <- factor(loci_df$locus, levels = loci_df$locus[order(loci_df$count)])
+
+# Create a ggplot histogram
+contam_loci <- ggplot(loci_df, aes(x = locus, y = count)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  labs(
+    x = "Locus",
+    y = "# Contaminant Alleles",
+    title = ""
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  coord_flip()
+
+contam_loci
+
+ggsave("contam_loci.png", contam_loci, dpi = 300, height = 20, width = 15, bg = "white")
+
 
 
 # *** NUMBER OF CONTAMINANT ALLELES PER CONTROL ***-------------------------
@@ -163,12 +193,12 @@ color_palette <- rgb(runif(num_colors), runif(num_colors), runif(num_colors))
 n_contams_per_run <- n_contams_per_run %>%
   mutate(sampleID = factor(sampleID, levels = sampleID[order(-n_contams)]))
 
-ggplot(n_contams_per_run, aes(x = sampleID, y = n_contams, fill = run)) +
+contams1  <- ggplot(n_contams_per_run, aes(x = sampleID, y = n_contams, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
     x = "Sample ID",
-    y = "Number of Contaminant Alleles",
+    y = " # Contaminant Alleles",
     fill = "Run"
   ) +
   theme_minimal() +
@@ -176,7 +206,12 @@ ggplot(n_contams_per_run, aes(x = sampleID, y = n_contams, fill = run)) +
     axis.text.x = element_text(angle = 90, hjust = 1),
     legend.title = element_blank()
   ) +
-  guides(fill = guide_legend(ncol = 2))
+  guides(fill = FALSE)
+  #guides(fill = guide_legend(ncol = 2))
+
+contams1
+
+ggsave("contams1.png", contams1, dpi = 300, height = 10, width = 10, bg = "white")
 
 
 # #check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
@@ -218,7 +253,7 @@ dist_df <- dist_df %>%
   )
 
 # Plot heatmap using ggplot2
-ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
+hist_jaccard_all <- ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
   scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
@@ -232,6 +267,10 @@ ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
     axis.text.x = element_text(angle = 90, hjust = 1),
     axis.text.y = element_text(angle = 0, hjust = 1)
   )
+
+hist_jaccard_all
+
+ggsave("hist_jaccard_all.png", hist_jaccard_all, dpi = 300, height = 12, width = 15, bg = "white")
 
 
 ##
@@ -267,7 +306,7 @@ dist_df <- dist_df %>%
   )
 
 # Plot heatmap using ggplot2
-ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
+hist_jaccard_10plus <- ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
   scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
@@ -282,7 +321,9 @@ ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
     axis.text.y = element_text(angle = 0, hjust = 1)
   )
 
+hist_jaccard_10plus
 
+ggsave("hist_jaccard_10plus.png", hist_jaccard_10plus, dpi = 300, height = 9, width = 11, bg = "white")
 
 
 # *** FREQUENCY DISTRIBUTION OF CONTAMINANT ALLELES *** -------------------
@@ -305,8 +346,8 @@ ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
   theme(legend.title = element_blank())+
   guides(fill = guide_legend(ncol = 1))
 
-ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black") +
+contams2 <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity") +
   scale_fill_manual(values = color_palette) +
   labs(
     title = "",
@@ -320,6 +361,10 @@ ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
     legend.position = "none"
   ) +
   facet_wrap(~run, scales = "free_y")
+
+contams2
+
+ggsave("contams2.png", contams2, dpi = 300, height = 10, width = 17, bg = "white")
 
 
 # controls with contaminant alleles that have a freq = 1
@@ -368,6 +413,9 @@ rownames(contam_procedence_results) <- NULL
 
 print(contam_procedence_results)
 
+write.csv(contam_procedence_results, "contam_procedence_results.csv")
+
+
 # ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples_from_run)) +
 #   geom_histogram(bins = 50, color = "black", fill = "blue", alpha = 0.7) +
 #   labs(
@@ -378,7 +426,7 @@ print(contam_procedence_results)
 #   theme_minimal()
 
 # % contaminants in field samples
-ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples_from_run, fill = run)) +
+contams3 <- ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples_from_run, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
@@ -393,18 +441,23 @@ ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_fi
     legend.title = element_blank()
   )+
   facet_wrap(~run, scales = "free_x")+
-  guides(fill = guide_legend(ncol = 1))
+  guides(fill = FALSE)
+
+contams3
+
+ggsave("contams3.png", contams3, dpi = 300, height = 15, width = 15, bg = "white")
+
 
 # number of contaminants in field samples
 contam_procedence_results$n_contams_in_field_samples <- contam_procedence_results$n_contams_in_control * (contam_procedence_results$percentage_contams_in_field_samples_from_run/100)
 
-ggplot(contam_procedence_results, aes(x = sampleID, y = n_contams_in_field_samples, fill = run)) +
+contams4 <- ggplot(contam_procedence_results, aes(x = sampleID, y = n_contams_in_field_samples, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
     title = "",
     x = "3D7 Controls",
-    y = "% Contaminants in Field Samples",
+    y = "# Contaminants in Field Samples",
     fill = "Run"
   ) +
   theme_minimal() +
@@ -413,7 +466,11 @@ ggplot(contam_procedence_results, aes(x = sampleID, y = n_contams_in_field_sampl
     legend.title = element_blank()
   )+
   facet_wrap(~run, scales = "free_x")+
-  guides(fill = guide_legend(ncol = 1))
+  guides(fill = FALSE)
+
+contams4
+
+ggsave("contams4.png", contams4, dpi = 300, height = 15, width = 15, bg = "white")
 
 
 # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
@@ -432,7 +489,7 @@ allele_counts <- allele_counts %>%
   separate(sampleID, into = c("sampleID", "run"), sep = "__")
 
 
-ggplot(allele_counts, aes(x = sampleID, y = missing_alleles, fill = run)) +
+missing <- ggplot(allele_counts, aes(x = sampleID, y = missing_alleles, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
@@ -447,5 +504,64 @@ ggplot(allele_counts, aes(x = sampleID, y = missing_alleles, fill = run)) +
     legend.title = element_blank()
   )+
   facet_wrap(~run, scales = "free_x")+
-  guides(fill = guide_legend(ncol = 1))
+  guides(fill = FALSE)
+
+missing
+
+ggsave("missing.png", missing, dpi = 300, height = 15, width = 15, bg = "white")
+
+
+### PROPOSED THRESHOLDS
+
+#remove alleles with freq of 1 (possible mislabelling of controls)
+CONTAMINANTS_less_than_1 <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus< 1,]
+
+ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black", fill = "#69b3a2",) +
+  scale_fill_manual(values = color_palette) +
+  labs(
+    title = "",
+    x = "In-sample allele frequency",
+    y = "Non-reference alleles"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank())+
+  guides(fill = guide_legend(ncol = 1))+
+  theme(
+    legend.position = "none"
+  )
+
+summary(CONTAMINANTS_less_than_1$norm.reads.locus)
+
+# interpret as for 50%, 50% of contaminants appear at a freq of n;
+contam_thresholds <- as.data.frame(t(t(quantile(CONTAMINANTS_less_than_1$norm.reads.locus, probs= c(0.5, 0.75, 0.9, 0.95, 0.99)))))
+
+colnames(contam_thresholds)[1] <- "MAF_threshold"
+
+write.csv(contam_thresholds, "comtam_thresholds.csv")
+
+
+# missing alleles
+ggplot(allele_counts, aes(x = missing_alleles)) +
+  geom_histogram(
+    binwidth = 1,  # Adjust binwidth for your data
+    fill = "#69b3a2",  # Custom fill color
+    color = "black",   # Border color
+    alpha = 0.8        # Transparency
+  ) +
+  labs(
+    title = "",
+    x = "Number of Missing Alleles",
+    y = "Frequency"
+  ) +
+  theme_minimal(base_size = 14) +  # Clean minimal theme
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center and bold title
+    axis.title = element_text()
+  )
+
+#interpret backwards (when 0.1, 90% of samples have n missing alleles)
+quantile(allele_counts$missing_alleles, probs= c(0.1, 0.25, 0.5, 0.75, 0.9))
+
+
 
