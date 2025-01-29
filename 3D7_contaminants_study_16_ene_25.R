@@ -214,11 +214,11 @@ contams1
 ggsave("contams1.png", contams1, dpi = 300, height = 10, width = 10, bg = "white")
 
 
-# #check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
-# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
-# 
-# #do these come from the cism contaminant strain?
-# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
+#check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
+CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
+
+#do these come from the cism contaminant strain?
+CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
 
 ##
 #visualize similaritites of samples with many contaminants through heatmap to track potential origin
@@ -516,29 +516,36 @@ ggsave("missing.png", missing, dpi = 300, height = 15, width = 15, bg = "white")
 #remove alleles with freq of 1 (possible mislabelling of controls)
 CONTAMINANTS_less_than_1 <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus< 1,]
 
-ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black", fill = "#69b3a2",) +
-  scale_fill_manual(values = color_palette) +
-  labs(
-    title = "",
-    x = "In-sample allele frequency",
-    y = "Non-reference alleles"
-  ) +
-  theme_minimal() +
-  theme(legend.title = element_blank())+
-  guides(fill = guide_legend(ncol = 1))+
-  theme(
-    legend.position = "none"
-  )
-
-summary(CONTAMINANTS_less_than_1$norm.reads.locus)
-
 # interpret as for 50%, 50% of contaminants appear at a freq of n;
 contam_thresholds <- as.data.frame(t(t(quantile(CONTAMINANTS_less_than_1$norm.reads.locus, probs= c(0.5, 0.75, 0.9, 0.95, 0.99)))))
 
 colnames(contam_thresholds)[1] <- "MAF_threshold"
 
 write.csv(contam_thresholds, "comtam_thresholds.csv")
+
+
+thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black", fill = "#69b3a2") +
+  geom_vline(data = as.data.frame(contam_thresholds), 
+             aes(xintercept = MAF_threshold, color = factor(rownames(contam_thresholds))), 
+             linetype = "solid", size = 1) +
+  scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
+  labs(
+    title = "",
+    x = "In-sample allele frequency",
+    y = "Contaminant alleles"
+  ) +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Thresholds")) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  )
+
+thresholds
+
+ggsave("thresholds.png", thresholds, height = 5, width = 8, dpi = 300, bg = "white")
 
 
 # missing alleles
@@ -551,7 +558,7 @@ ggplot(allele_counts, aes(x = missing_alleles)) +
   ) +
   labs(
     title = "",
-    x = "Number of Missing Alleles",
+    x = "Contaminant Alleles",
     y = "Frequency"
   ) +
   theme_minimal(base_size = 14) +  # Clean minimal theme
@@ -562,6 +569,4 @@ ggplot(allele_counts, aes(x = missing_alleles)) +
 
 #interpret backwards (when 0.1, 90% of samples have n missing alleles)
 quantile(allele_counts$missing_alleles, probs= c(0.1, 0.25, 0.5, 0.75, 0.9))
-
-
 
