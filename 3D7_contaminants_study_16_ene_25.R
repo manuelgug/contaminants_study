@@ -388,27 +388,39 @@ SAMPLES <- unique(CONTAMINANTS$sampleID)
 contam_procedence_results <- list()
 
 for (sample in SAMPLES) {
-
+  
   subsample_CONTAMINANTS_data <- CONTAMINANTS[CONTAMINANTS$sampleID == sample,]
-
+  
   run <- strsplit(sample, "__")[[1]][2]
-
+  
   subsample_filed_data <- field_data[field_data$run == run,]
   
-  comparison_result <- unique(subsample_CONTAMINANTS_data$allele) %in% unique(subsample_filed_data$allele)
+  #contaminants found in field samples from same run 
+  contaminants_in_field <- intersect(subsample_CONTAMINANTS_data$allele, subsample_filed_data$allele)
   
-  percentage_contams_in_field_samples <- mean(comparison_result) * 100 #mean works to calculate proportion of booleans. cool!
+  #store the contaminants not found in field samples from same run 
+  contaminants_not_in_field <- setdiff(subsample_CONTAMINANTS_data$allele, subsample_filed_data$allele)
   
-  count_contams_in_field_samples <- sum(comparison_result)
-
-  n_contams_in_control <- length(comparison_result)
-
+  
+  # # of cross contamination contaminants (contaminants not found in same run but found in others) and thee runs they belong to
+  n_cross_comtams <- intersect(contaminants_not_in_field, field_data$allele)
+  cross_contam_runs <- field_data[field_data$allele %in% contaminants_not_in_field,]$run
+  
+  # contaminants not in same and other runs. oriigin unknown
+  n_contams_unknown <- setdiff(contaminants_not_in_field, field_data$allele)
+  
+  
   contam_procedence_results[[sample]] <- data.frame(
     run = run,
     sampleID = sample,
-    n_contams_in_control = n_contams_in_control,
-    n_contams_in_field_samples = count_contams_in_field_samples, 
-    percentage_contams_in_field_samples_from_run = percentage_contams_in_field_samples
+    n_nonref_in_control = length(unique(subsample_CONTAMINANTS_data$allele)),
+    n_contams_in_field = length(unique(contaminants_in_field)),
+    contaminants_in_field = I(list(contaminants_in_field)),
+    n_contams_not_in_field = length(unique(contaminants_not_in_field)),
+    contaminants_not_in_field = I(list(contaminants_not_in_field)),
+    n_cross_contams = length(unique(n_cross_comtams)),
+    cross_contam_runs = I(list(unique(cross_contam_runs))),
+    n_unknown_contams = length(unique(n_contams_unknown))  
   )
 }
 
@@ -417,9 +429,18 @@ contam_procedence_results <- do.call(rbind, contam_procedence_results)
 contam_procedence_results$sampleID <- sub("__.*", "", contam_procedence_results$sampleID)
 rownames(contam_procedence_results) <- NULL
 
-print(contam_procedence_results)
+# Ensure list-columns (e.g., vector columns) are stored as character strings
+contam_procedence_results <- contam_procedence_results %>%
+  mutate(across(where(is.list), ~sapply(., toString)))  # Converts list elements to comma-separated strings
 
-write.csv(contam_procedence_results, "contam_procedence_results.csv")
+# Replace blanks (empty values) with NA for proper CSV formatting
+contam_procedence_results[contam_procedence_results == ""] <- NA
+
+contam_procedence_results <- contam_procedence_results %>% select(run, sampleID, n_nonref_in_control, n_contams_in_field, n_cross_contams, cross_contam_runs, n_unknown_contams)
+
+# Write to CSV
+write.csv(contam_procedence_results, "contam_procedence_results.csv", row.names = FALSE, na = "")
+
 
 
 # ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples_from_run)) +
@@ -431,52 +452,46 @@ write.csv(contam_procedence_results, "contam_procedence_results.csv")
 #   ) +
 #   theme_minimal()
 
-# % contaminants in field samples
-contams3 <- ggplot(contam_procedence_results, aes(x = sampleID, y = percentage_contams_in_field_samples_from_run, fill = run)) +
-  geom_bar(stat = "identity", color = "black") +
-  scale_fill_manual(values = color_palette) +
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Calculate percentages based on n_nonref_in_control (100%)
+contam_procedence_results_percentages <- contam_procedence_results %>%
+  mutate(
+    perc_contams_in_field = (n_contams_in_field / n_nonref_in_control) * 100,
+    perc_cross_contams = (n_cross_contams / n_nonref_in_control) * 100,
+    perc_unknown_contams = (n_unknown_contams / n_nonref_in_control) * 100
+  )
+
+
+# Reshape data to long format for ggplot
+contam_procedence_long <- contam_procedence_results_percentages %>%
+  select(sampleID, run, perc_contams_in_field, perc_cross_contams, perc_unknown_contams) %>%
+  pivot_longer(cols = c(perc_contams_in_field, perc_cross_contams, perc_unknown_contams),
+               names_to = "contam_type",
+               values_to = "count")
+
+contam_procedence_long$contam_type <- gsub("perc_", "",contam_procedence_long$contam_type)
+
+# Create stacked bar plot
+contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = contam_type)) +
+  geom_bar(stat = "identity", position = "stack") +  # Stacked bars
+  facet_wrap(~run, scales = "free_x") +  # Facet by 'run'
+  scale_fill_manual(values = c("#1f78b4", "#e31a1c", "black")) +  # Custom colors
   labs(
-    title = "",
-    x = "3D7 Controls",
-    y = "% Contaminants in Field Samples",
-    fill = "Run"
+    x = "Sample ID",
+    y = "% Contaminants",
+    fill = "Source",
+    title = ""
   ) +
   theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    legend.title = element_blank()
-  )+
-  facet_wrap(~run, scales = "free_x")+
-  guides(fill = FALSE)
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x labels for readability
 
 contams3
 
-ggsave("contams3.png", contams3, dpi = 300, height = 15, width = 15, bg = "white")
+ggsave("contams3.png", contams3, dpi = 300, height = 13, width = 12, bg = "white")
 
-
-# number of contaminants in field samples
-contam_procedence_results$n_contams_in_field_samples <- contam_procedence_results$n_contams_in_control * (contam_procedence_results$percentage_contams_in_field_samples_from_run/100)
-
-contams4 <- ggplot(contam_procedence_results, aes(x = sampleID, y = n_contams_in_field_samples, fill = run)) +
-  geom_bar(stat = "identity", color = "black") +
-  scale_fill_manual(values = color_palette) +
-  labs(
-    title = "",
-    x = "3D7 Controls",
-    y = "# Contaminants in Field Samples",
-    fill = "Run"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    legend.title = element_blank()
-  )+
-  facet_wrap(~run, scales = "free_x")+
-  guides(fill = FALSE)
-
-contams4
-
-ggsave("contams4.png", contams4, dpi = 300, height = 15, width = 15, bg = "white")
 
 
 # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
