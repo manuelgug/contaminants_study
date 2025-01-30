@@ -93,17 +93,18 @@ merged_dfs <- merged_dfs %>%
   mutate(norm.reads.locus = reads / sum(reads, na.rm = TRUE)) %>%  # Calculate the proportion
   ungroup() 
 
-# remove icae1 run (cARLA); exclude bachmi
-#merged_dfs <- merged_dfs[!grepl("ICAE_NextSeq01|MDACD_NextSeq02|ASINT_NextSeq04", merged_dfs$sampleID, ignore.case = TRUE),]
-
-
-# merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$allele),] #remove alleles with I (insertion)
-# merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$allele),] #remove alleles with D (deletion)
+# remove probable bioinfo errors
+merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$allele),] #remove alleles with I (insertion)
+merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$allele),] #remove alleles with D (deletion)
 # merged_dfs <- merged_dfs[!merged_dfs$reads < 10,] #remove alleles with low read counts
 
 controls_data <- merged_dfs[grepl("3d7", merged_dfs$sampleID, ignore.case = TRUE) &
                               !grepl("plus|hb3|dd2", merged_dfs$sampleID, ignore.case = TRUE),] 
                               #,]& !grepl("000000000", merged_dfs$sampleID, ignore.case = TRUE),] # remove CISM runs
+
+#remove known mislabelled controls:
+mislabelled_controls <- c("N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5", "N3D7100KA_S7__BOH22_Nextseq01", "N3D710kA_S56__BOH22_Nextseq01")
+controls_data <- controls_data[!controls_data$sampleID %in% mislabelled_controls,]
 
 
 TOTAL_RUNS <- length(unique(controls_data$run))
@@ -132,6 +133,8 @@ colnames(allele_df) <- c("allele", "count")
 
 allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(allele_df$count)])
 
+length(unique(allele_df$allele))
+
 # Create a ggplot histogram
 contam_alleles <- ggplot(allele_df[allele_df$count > 1,], aes(x = allele, y = count)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "black") +
@@ -146,7 +149,7 @@ contam_alleles <- ggplot(allele_df[allele_df$count > 1,], aes(x = allele, y = co
 
 contam_alleles
 
-ggsave("contam_alleles.png", contam_alleles, dpi = 300, height = 20, width = 15, bg = "white")
+ggsave("contam_alleles.png", contam_alleles, dpi = 300, height = 5, width = 7, bg = "white")
 
 
 
@@ -170,7 +173,7 @@ contam_loci <- ggplot(loci_df, aes(x = locus, y = count)) +
 
 contam_loci
 
-ggsave("contam_loci.png", contam_loci, dpi = 300, height = 20, width = 15, bg = "white")
+ggsave("contam_loci.png", contam_loci, dpi = 300, height = 12, width = 9, bg = "white")
 
 
 
@@ -214,11 +217,11 @@ contams1
 ggsave("contams1.png", contams1, dpi = 300, height = 10, width = 10, bg = "white")
 
 
-#check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
-CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
-
-#do these come from the cism contaminant strain?
-CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
+# #check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
+# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
+# 
+# #do these come from the cism contaminant strain?
+# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
 
 ##
 #visualize similaritites of samples with many contaminants through heatmap to track potential origin
@@ -394,7 +397,9 @@ for (sample in SAMPLES) {
   
   comparison_result <- unique(subsample_CONTAMINANTS_data$allele) %in% unique(subsample_filed_data$allele)
   
-  percentage_contams_in_field_samples <- mean(comparison_result) * 100
+  percentage_contams_in_field_samples <- mean(comparison_result) * 100 #mean works to calculate proportion of booleans. cool!
+  
+  count_contams_in_field_samples <- sum(comparison_result)
 
   n_contams_in_control <- length(comparison_result)
 
@@ -402,6 +407,7 @@ for (sample in SAMPLES) {
     run = run,
     sampleID = sample,
     n_contams_in_control = n_contams_in_control,
+    n_contams_in_field_samples = count_contams_in_field_samples, 
     percentage_contams_in_field_samples_from_run = percentage_contams_in_field_samples
   )
 }
@@ -525,7 +531,7 @@ write.csv(contam_thresholds, "comtam_thresholds.csv")
 
 
 thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black", fill = "#69b3a2") +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity", fill = "#69b3a2") +
   geom_vline(data = as.data.frame(contam_thresholds), 
              aes(xintercept = MAF_threshold, color = factor(rownames(contam_thresholds))), 
              linetype = "solid", size = 1) +
@@ -536,7 +542,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
     y = "Contaminant alleles"
   ) +
   theme_minimal() +
-  guides(color = guide_legend(title = "Thresholds")) +
+  guides(color = guide_legend(title = "% contaminants\n    eliminated")) +
   theme(
     legend.position = "right",
     legend.title = element_text(size = 10),
