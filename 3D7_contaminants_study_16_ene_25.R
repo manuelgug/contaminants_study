@@ -59,18 +59,19 @@ good_sampleID <- merged_dfs %>%
 merged_dfs <- merged_dfs[merged_dfs$sampleID %in% good_sampleID, ]
 
 
-########## 2) REMOVE BIOINFO ERRORS AND MASKING ################-------
-# remove indels
-merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$allele),] #remove alleles with I (insertion)
-merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$allele),] #remove alleles with D (deletion)
-# merged_dfs <- merged_dfs[!merged_dfs$reads < 10,] #remove alleles with low read counts
-
+########## 2) CONVERT MASKING INTO REF ################-------
 # ignore masking, turn it to ref (.)
 merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar)
 merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_dfs$pseudo_cigar), ".", merged_dfs$pseudo_cigar)
 
 
-########## 3) CREATE/MODIFY USEFUL VARIABLES ################-------
+########## 3) REMOVE BIOINFO ERRORS ################-------
+# remove indels
+merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$pseudo_cigar),] #remove alleles with I (insertion)
+merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$pseudo_cigar),] #remove alleles with D (deletion)
+
+
+########## 2) CREATE/MODIFY USEFUL VARIABLES ################-------
 # # keep 1A amps
 # merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
 
@@ -84,17 +85,17 @@ merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
 merged_dfs$sampleID <- paste0(merged_dfs$sampleID, "__", merged_dfs$run)
 
 
-########## 4) RECALCULATE VALUES ################-------
-#recalc reads
-merged_dfs <- merged_dfs %>%
-  group_by(run, sampleID, locus, allele, pool) %>%  # Group by sampleID, locus, and allele
-  summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")  # Sum reads and drop grouping
-
-#recalc norm.reads.locus
-merged_dfs <- merged_dfs %>%
-  group_by(sampleID, locus) %>%  # Group by sampleID and locus
-  mutate(norm.reads.locus = reads / sum(reads, na.rm = TRUE)) %>%  # Calculate the proportion
-  ungroup() 
+# ########## 4) RECALCULATE VALUES ################-------
+# #recalc reads
+# merged_dfs <- merged_dfs %>%
+#   group_by(run, sampleID, locus, allele, pool) %>%  # Group by sampleID, locus, and allele
+#   summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")  # Sum reads and drop grouping
+# 
+# #recalc norm.reads.locus
+# merged_dfs <- merged_dfs %>%
+#   group_by(sampleID, locus) %>%  # Group by sampleID and locus
+#   mutate(norm.reads.locus = reads / sum(reads, na.rm = TRUE)) %>%  # Calculate the proportion
+#   ungroup() 
 
 
 
@@ -185,6 +186,7 @@ loci_df <- left_join(loci_df, controls_data[c("locus", "pool")], by = "locus") %
 
 # Create a ggplot histogram
 contam_loci <- ggplot( loci_df %>% 
+                         filter(count > 1) %>% 
                          mutate(locus = reorder(locus, count)),  # Reorder by count
                        aes(x = locus, y = count)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "white") +
@@ -304,27 +306,37 @@ dist_df_all <- CONTAMINANTS %>%
   }) %>%
   ungroup()
 
+dist_df_all <- dist_df_all %>%
+  group_by(pool) %>%
+  mutate(n_samples = n_distinct(as.character(SampleID1))) %>% 
+  ungroup() %>%
+  # Remove self-comparison rows only when there's exactly one sample in that pool
+  filter(!(n_samples == 1 & SampleID1 == SampleID2)) %>%
+  select(-n_samples)
+
 # 6. Plot the heatmap faceted by pool
 hist_jaccard_all <- ggplot(dist_df_all, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
   scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
-    title = "Jaccard's Distance Within Pools",
+    title = "",
     x = "",
     y = "",
     fill = "Jaccard's Distance"
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    axis.text.y = element_text(angle = 0, hjust = 1)
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
   ) +
   facet_wrap(~ pool, scales = "free", ncol = 2)
 
 # Display the plot
 hist_jaccard_all
 
-ggsave("hist_jaccard_all2.png", hist_jaccard_all, dpi = 300, height = 30, width = 20, bg = "white")
+ggsave("hist_jaccard_all2.png", hist_jaccard_all, dpi = 300, height = 20, width = 20, bg = "white")
 
 
 
@@ -332,7 +344,7 @@ ggsave("hist_jaccard_all2.png", hist_jaccard_all, dpi = 300, height = 30, width 
 ##
 # 1. Get the sampleIDs with many contaminants
 SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run %>%
-  filter(n_contams > 10) %>%
+  filter(n_contams > 1) %>%
   pull(sampleID)
 
 # 2. For each pool (within the selected samples), calculate the Jaccard distance
@@ -368,29 +380,37 @@ dist_df_all <- CONTAMINANTS %>%
   }) %>%
   ungroup()
 
+dist_df_all <- dist_df_all %>%
+  group_by(pool) %>%
+  mutate(n_samples = n_distinct(as.character(SampleID1))) %>% 
+  ungroup() %>%
+  # Remove self-comparison rows only when there's exactly one sample in that pool
+  filter(!(n_samples == 1 & SampleID1 == SampleID2)) %>%
+  select(-n_samples)
+
 # 6. Plot the heatmap faceted by pool
 hist_jaccard_10plus <- ggplot(dist_df_all, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
   scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
-    title = "Jaccard's Distance Within Pools",
+    title = "",
     x = "",
     y = "",
     fill = "Jaccard's Distance"
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    axis.text.y = element_text(angle = 0, hjust = 1)
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
   ) +
   facet_wrap(~ pool, scales = "free", ncol = 2)
 
 # Display the plot
 hist_jaccard_10plus
 
-
-
-ggsave("hist_jaccard_10plus2.png", hist_jaccard_10plus, dpi = 300, height = 20, width = 15, bg = "white")
+ggsave("hist_jaccard_10plus2.png", hist_jaccard_10plus, dpi = 300, height = 20, width = 20, bg = "white")
 
 
 
@@ -528,7 +548,7 @@ contam_procedence_results[contam_procedence_results == ""] <- NA
 contam_procedence_results <- contam_procedence_results %>% select(run, sampleID, n_nonref_in_control, n_contams_in_field, n_cross_contams, cross_contam_runs, n_unknown_contams)
 
 # Write to CSV
-write.csv(contam_procedence_results, "contam_procedence_results.csv", row.names = FALSE, na = "")
+write.csv(contam_procedence_results, "contam_procedence_results2.csv", row.names = FALSE, na = "")
 
 
 
@@ -541,9 +561,6 @@ write.csv(contam_procedence_results, "contam_procedence_results.csv", row.names 
 #   ) +
 #   theme_minimal()
 
-library(ggplot2)
-library(dplyr)
-library(tidyr)
 
 # Calculate percentages based on n_nonref_in_control (100%)
 contam_procedence_results_percentages <- contam_procedence_results %>%
@@ -579,46 +596,46 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = c
 
 contams3
 
-ggsave("contams3.png", contams3, dpi = 300, height = 13, width = 12, bg = "white")
+ggsave("contams32.png", contams3, dpi = 300, height = 13, width = 12, bg = "white")
 
 
 
-# *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
-
-all_ref_alleles <- unique(controls_data[grepl("_.$", controls_data$allele),]$locus)
-n_expected_alleles <- length(all_ref_alleles) # number of expected alleles for 3d7 controls  == number of loci
-
-allele_counts <- controls_data %>%
-  filter(grepl("_.$", allele)) %>%
-  group_by(sampleID) %>%
-  summarise(n_correctly_sequenced_ref_alleles = length(unique(allele)))
-
-allele_counts$missing_alleles <-  n_expected_alleles - allele_counts$n_correctly_sequenced_ref_alleles
-
-allele_counts <- allele_counts %>%
-  separate(sampleID, into = c("sampleID", "run"), sep = "__")
-
-
-missing <- ggplot(allele_counts, aes(x = sampleID, y = missing_alleles, fill = run)) +
-  geom_bar(stat = "identity", color = "black") +
-  scale_fill_manual(values = color_palette) +
-  labs(
-    title = "",
-    x = "3D7 Controls",
-    y = "# Missing Alleles",
-    fill = "Run"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    legend.title = element_blank()
-  )+
-  facet_wrap(~run, scales = "free_x")+
-  guides(fill = FALSE)
-
-missing
-
-ggsave("missing.png", missing, dpi = 300, height = 15, width = 15, bg = "white")
+# # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
+# 
+# all_ref_alleles <- unique(controls_data[grepl("_.$", controls_data$allele),]$locus)
+# n_expected_alleles <- length(all_ref_alleles) # number of expected alleles for 3d7 controls  == number of loci
+# 
+# allele_counts <- controls_data %>%
+#   filter(grepl("_.$", allele)) %>%
+#   group_by(sampleID) %>%
+#   summarise(n_correctly_sequenced_ref_alleles = length(unique(allele)))
+# 
+# allele_counts$missing_alleles <-  n_expected_alleles - allele_counts$n_correctly_sequenced_ref_alleles
+# 
+# allele_counts <- allele_counts %>%
+#   separate(sampleID, into = c("sampleID", "run"), sep = "__")
+# 
+# 
+# missing <- ggplot(allele_counts, aes(x = sampleID, y = missing_alleles, fill = run)) +
+#   geom_bar(stat = "identity", color = "black") +
+#   scale_fill_manual(values = color_palette) +
+#   labs(
+#     title = "",
+#     x = "3D7 Controls",
+#     y = "# Missing Alleles",
+#     fill = "Run"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(angle = 90, hjust = 1),
+#     legend.title = element_blank()
+#   )+
+#   facet_wrap(~run, scales = "free_x")+
+#   guides(fill = FALSE)
+# 
+# missing
+# 
+# ggsave("missing.png", missing, dpi = 300, height = 15, width = 15, bg = "white")
 
 
 ### PROPOSED THRESHOLDS
@@ -631,11 +648,13 @@ contam_thresholds <- as.data.frame(t(t(quantile(CONTAMINANTS_less_than_1$norm.re
 
 colnames(contam_thresholds)[1] <- "MAF_threshold"
 
-write.csv(contam_thresholds, "comtam_thresholds.csv")
+contam_thresholds
+
+write.csv(contam_thresholds, "comtam_thresholds2.csv")
 
 
 thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity", fill = "#69b3a2") +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity", fill = "steelblue", color = "white") +
   geom_vline(data = as.data.frame(contam_thresholds), 
              aes(xintercept = MAF_threshold, color = factor(rownames(contam_thresholds))), 
              linetype = "solid", size = 1) +
@@ -646,7 +665,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
     y = "Contaminant alleles"
   ) +
   theme_minimal() +
-  guides(color = guide_legend(title = "% contaminants\n    eliminated")) +
+  guides(color = guide_legend(title = "% Non-ref alleles\n    eliminated")) +
   theme(
     legend.position = "right",
     legend.title = element_text(size = 10),
@@ -655,28 +674,36 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
 
 thresholds
 
-ggsave("thresholds.png", thresholds, height = 5, width = 8, dpi = 300, bg = "white")
+ggsave("thresholds2.png", thresholds, height = 5, width = 8, dpi = 300, bg = "white")
 
 
-# missing alleles
-ggplot(allele_counts, aes(x = missing_alleles)) +
-  geom_histogram(
-    binwidth = 1,  # Adjust binwidth for your data
-    fill = "#69b3a2",  # Custom fill color
-    color = "black",   # Border color
-    alpha = 0.8        # Transparency
-  ) +
-  labs(
-    title = "",
-    x = "Contaminant Alleles",
-    y = "Frequency"
-  ) +
-  theme_minimal(base_size = 14) +  # Clean minimal theme
-  theme(
-    plot.title = element_text(hjust = 0.5),  # Center and bold title
-    axis.title = element_text()
-  )
+### EXPLORE FIXED CONTAMINANTS --------
+fixed_contams <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]
 
-#interpret backwards (when 0.1, 90% of samples have n missing alleles)
-quantile(allele_counts$missing_alleles, probs= c(0.1, 0.25, 0.5, 0.75, 0.9))
+table(fixed_contams$pool)
+
+table(fixed_contams$locus)
+
+
+# # missing alleles
+# ggplot(allele_counts, aes(x = missing_alleles)) +
+#   geom_histogram(
+#     binwidth = 1,  # Adjust binwidth for your data
+#     fill = "#69b3a2",  # Custom fill color
+#     color = "black",   # Border color
+#     alpha = 0.8        # Transparency
+#   ) +
+#   labs(
+#     title = "",
+#     x = "Contaminant Alleles",
+#     y = "Frequency"
+#   ) +
+#   theme_minimal(base_size = 14) +  # Clean minimal theme
+#   theme(
+#     plot.title = element_text(hjust = 0.5),  # Center and bold title
+#     axis.title = element_text()
+#   )
+# 
+# #interpret backwards (when 0.1, 90% of samples have n missing alleles)
+# quantile(allele_counts$missing_alleles, probs= c(0.1, 0.25, 0.5, 0.75, 0.9))
 
