@@ -6,11 +6,10 @@ library(ggplot2)
 library(vegan)
 library(tibble)
 library(reshape2)
+library(stringr)
 
 
-############################################################
-####### PARAMETERS AND INPUTS #######--------------------
-############################################################
+####### 0) PARAMETERS AND INPUTS #######--------------------
 
 # provice folder name containing all *.FILTERED genomic data
 main_dir <- "../amp_performance/ALL_SEQ_RESULTS_FILTERED"
@@ -40,6 +39,7 @@ for (dir in filtered_dirs) {
 merged_dfs <- bind_rows(list_of_dfs)
 
 
+########## 1) KEEP QUALITY SAMPLES ################-------
 # identify sampleID with >=50 loci having >= 100 reads (NANNA'S AND SIMONE'S FILTER)
 good_sampleID <- merged_dfs %>%
   
@@ -55,14 +55,27 @@ good_sampleID <- merged_dfs %>%
   
   pull(sampleID)
 
-
 # Keep good quality samples
 merged_dfs <- merged_dfs[merged_dfs$sampleID %in% good_sampleID, ]
 
 
-# keep 1A amps
-merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
+########## 2) REMOVE BIOINFO ERRORS AND MASKING ################-------
+# remove indels
+merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$allele),] #remove alleles with I (insertion)
+merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$allele),] #remove alleles with D (deletion)
+# merged_dfs <- merged_dfs[!merged_dfs$reads < 10,] #remove alleles with low read counts
 
+# ignore masking, turn it to ref (.)
+merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar)
+merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_dfs$pseudo_cigar), ".", merged_dfs$pseudo_cigar)
+
+
+########## 3) CREATE/MODIFY USEFUL VARIABLES ################-------
+# # keep 1A amps
+# merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
+
+#make pool variable
+merged_dfs$pool <-  str_extract(merged_dfs$locus, "[^-]+$")
 
 #create allele column
 merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
@@ -71,20 +84,10 @@ merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
 merged_dfs$sampleID <- paste0(merged_dfs$sampleID, "__", merged_dfs$run)
 
 
-############################### REMOVE MASKING
-#IGNORE MASKING
-merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar)
-merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_dfs$pseudo_cigar), ".", merged_dfs$pseudo_cigar)
-
-#create allele column
-merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
-
-merged_dfs <- merged_dfs %>%
-  select(sampleID, locus, allele,reads, run)
-
+########## 4) RECALCULATE VALUES ################-------
 #recalc reads
 merged_dfs <- merged_dfs %>%
-  group_by(run, sampleID, locus, allele) %>%  # Group by sampleID, locus, and allele
+  group_by(run, sampleID, locus, allele, pool) %>%  # Group by sampleID, locus, and allele
   summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")  # Sum reads and drop grouping
 
 #recalc norm.reads.locus
@@ -93,11 +96,9 @@ merged_dfs <- merged_dfs %>%
   mutate(norm.reads.locus = reads / sum(reads, na.rm = TRUE)) %>%  # Calculate the proportion
   ungroup() 
 
-# remove probable bioinfo errors
-merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$allele),] #remove alleles with I (insertion)
-merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$allele),] #remove alleles with D (deletion)
-# merged_dfs <- merged_dfs[!merged_dfs$reads < 10,] #remove alleles with low read counts
 
+
+########## 5) EXTRACT CONTROL DATA ################-------
 controls_data <- merged_dfs[grepl("3d7", merged_dfs$sampleID, ignore.case = TRUE) &
                               !grepl("plus|hb3|dd2", merged_dfs$sampleID, ignore.case = TRUE),] 
                               #,]& !grepl("000000000", merged_dfs$sampleID, ignore.case = TRUE),] # remove CISM runs
@@ -105,6 +106,8 @@ controls_data <- merged_dfs[grepl("3d7", merged_dfs$sampleID, ignore.case = TRUE
 #remove known mislabelled controls:
 mislabelled_controls <- c("N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5", "N3D7100KA_S7__BOH22_Nextseq01", "N3D710kA_S56__BOH22_Nextseq01")
 controls_data <- controls_data[!controls_data$sampleID %in% mislabelled_controls,]
+
+
 
 
 TOTAL_RUNS <- length(unique(controls_data$run))
@@ -135,21 +138,40 @@ allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(all
 
 length(unique(allele_df$allele))
 
+#put the pool variable
+allele_df <- left_join(allele_df, controls_data[c("allele", "pool")], by = "allele") %>% distinct()
+
+allele_df <- allele_df %>%
+  group_by(pool) %>%
+  arrange(pool, desc(count), .by_group = TRUE)
+
 # Create a ggplot histogram
-contam_alleles <- ggplot(allele_df[allele_df$count > 1,], aes(x = allele, y = count)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+contam_alleles <- ggplot(
+  allele_df %>% 
+    filter(count > 1) %>% 
+    mutate(allele = reorder(allele, count)),  # Reorder by count
+  aes(x = allele, y = count)
+) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "white") +
   labs(
     x = "Allele",
-    y = "Count",
+    y = "Non-reference alleles",
     title = ""
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  coord_flip()
+  theme(
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+  ) +
+  coord_flip() +
+  facet_wrap(~pool, scales = "free", ncol = 1)  # Use "free_y" to allow different y-axis scales per facet
+
 
 contam_alleles
 
-ggsave("contam_alleles.png", contam_alleles, dpi = 300, height = 5, width = 7, bg = "white")
+ggsave("contam_alleles2.png", contam_alleles, dpi = 300, height = 14, width = 27, bg = "white")
 
 
 
@@ -159,108 +181,135 @@ colnames(loci_df) <- c("locus", "count")
 
 loci_df$locus <- factor(loci_df$locus, levels = loci_df$locus[order(loci_df$count)])
 
+loci_df <- left_join(loci_df, controls_data[c("locus", "pool")], by = "locus") %>% distinct()
+
 # Create a ggplot histogram
-contam_loci <- ggplot(loci_df, aes(x = locus, y = count)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+contam_loci <- ggplot( loci_df %>% 
+                         mutate(locus = reorder(locus, count)),  # Reorder by count
+                       aes(x = locus, y = count)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "white") +
   labs(
     x = "Locus",
-    y = "# Contaminant Alleles",
+    y = "Non-reference alleles",
     title = ""
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  coord_flip()
+  theme(
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+  ) +
+  coord_flip()+
+  facet_wrap(~pool, scales = "free", ncol = 2) 
 
 contam_loci
 
-ggsave("contam_loci.png", contam_loci, dpi = 300, height = 12, width = 9, bg = "white")
+ggsave("contam_loci2.png", contam_loci, dpi = 300, height = 15, width = 15, bg = "white")
 
 
 
 # *** NUMBER OF CONTAMINANT ALLELES PER CONTROL ***-------------------------
 
 n_contams_per_run <- CONTAMINANTS %>%
-  group_by(run, sampleID) %>%
+  group_by(run, sampleID, pool) %>%
   summarise(n_contams = length(unique(allele)))
 
 n_contams_per_run
 
-n_contams_per_run <- n_contams_per_run %>%
-  mutate(sampleID = factor(sampleID, levels = sampleID[order(-n_contams)]))
+# n_contams_per_run <- n_contams_per_run %>%
+#   mutate(sampleID = factor(sampleID, levels = sampleID[order(-n_contams)]))
 
 set.seed(42069)
 
 num_colors <- length(unique(n_contams_per_run$run))
 color_palette <- rgb(runif(num_colors), runif(num_colors), runif(num_colors))
 
-n_contams_per_run <- n_contams_per_run %>%
-  mutate(sampleID = factor(sampleID, levels = sampleID[order(-n_contams)]))
+#remove run name from sample id. some controls aare gonna appear stacked because they are named the same, it`s fine
+n_contams_per_run$sampleID_plot <- gsub("__.*", "", n_contams_per_run$sampleID)
 
-contams1  <- ggplot(n_contams_per_run, aes(x = sampleID, y = n_contams, fill = run)) +
+#order for plot
+n_contams_per_run <- n_contams_per_run %>%
+  group_by(run) %>%
+  arrange(run, desc(n_contams), sampleID_plot) %>%
+  mutate(sampleID_plot = factor(sampleID_plot, levels = unique(sampleID_plot))) %>%
+  ungroup()
+
+
+
+#plot
+contams1  <- ggplot(n_contams_per_run,
+                    aes(x = sampleID_plot, y = n_contams, fill = run)) +
   geom_bar(stat = "identity", color = "black") +
   scale_fill_manual(values = color_palette) +
   labs(
-    x = "Sample ID",
-    y = " # Contaminant Alleles",
+    x = "3D7 control",
+    y = "Non-reference alleles",
     fill = "Run"
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    legend.title = element_blank()
+    axis.text.x = element_text(size = 6, angle = 90, hjust = 1),
+    #axis.title.x = element_text(size = 14),        
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
   ) +
-  guides(fill = FALSE)
-  #guides(fill = guide_legend(ncol = 2))
+  guides(fill = guide_legend(ncol = 1))+
+  facet_wrap(~pool, scales = "free", ncol = 2)
+
 
 contams1
 
-ggsave("contams1.png", contams1, dpi = 300, height = 10, width = 10, bg = "white")
+ggsave("contams12.png", contams1, dpi = 300, height = 12, width = 15, bg = "white")
 
 
-# #check the pair with the same high number of contaminant alleles. is it the same? if so, likely mislabelling issue
-# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7100KA_S7__BOH22_Nextseq01",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
-# 
-# #do these come from the cism contaminant strain?
-# CONTAMINANTS[CONTAMINANTS$sampleID == "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",]$allele %in% CONTAMINANTS[CONTAMINANTS$sampleID == "N3D710kA_S56__BOH22_Nextseq01",]$allele
 
-##
-#visualize similaritites of samples with many contaminants through heatmap to track potential origin
-SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run[n_contams_per_run$n_contams > 0,]$sampleID # SELECT MINIMUM AMOUNF OF CONTAMINANTS
+##### ?) JACCARD'S DISTANCE ###########33-------------------------
 
-# Createreshape2# Create a binary matrix for allele presence/absence
-allele_matrix <- CONTAMINANTS[CONTAMINANTS$sampleID %in% SAMPLES_WITH_MANY_CONTAMS,] %>%
-  select(sampleID, locus) %>%
-  distinct() %>%
-  mutate(present = 1) %>%
-  spread(key = locus, value = present, fill = 0) %>%
-  column_to_rownames("sampleID")
+# 1. Get the sampleIDs with many contaminants
+SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run %>%
+  filter(n_contams > 0) %>%
+  pull(sampleID)
 
-# Calculate the Jaccard distance between sampleIDs
-dist_matrix <- vegdist(allele_matrix, method = "jaccard")
+# 2. For each pool (within the selected samples), calculate the Jaccard distance
+dist_df_all <- CONTAMINANTS %>%
+  filter(sampleID %in% SAMPLES_WITH_MANY_CONTAMS) %>%
+  group_by(pool) %>%
+  do({
+    pool_data <- .
+    # 3. Create the binary allele matrix for this pool:
+    allele_matrix <- pool_data %>%
+      select(sampleID, locus) %>%
+      distinct() %>%
+      mutate(present = 1) %>%
+      spread(key = locus, value = present, fill = 0)
+    
+    # Set sampleID as row names (assumed unique within a pool)
+    allele_matrix <- allele_matrix %>% column_to_rownames("sampleID")
+    
+    # 4. Calculate the Jaccard distance for this pool
+    dist_matrix <- vegdist(allele_matrix, method = "jaccard")
+    
+    # 5. Convert the distance matrix to a long data frame
+    df <- as.data.frame(as.matrix(dist_matrix))
+    df$SampleID1 <- rownames(df)
+    df_long <- melt(df, id.vars = "SampleID1")
+    df_long <- df_long %>%
+      rename(SampleID2 = variable, distance = value) %>%
+      mutate(
+        SampleID1 = factor(SampleID1, levels = rownames(as.matrix(dist_matrix))),
+        SampleID2 = factor(SampleID2, levels = rownames(as.matrix(dist_matrix)))
+      )
+    df_long
+  }) %>%
+  ungroup()
 
-# Perform hierarchical clustering
-hc <- hclust(dist_matrix)
-
-# Get the order of samples based on clustering
-ordered_samples <- hc$labels[hc$order]
-
-# Convert distance matrix into a data frame for ggplot
-dist_df <- as.data.frame(as.matrix(dist_matrix))
-dist_df$SampleID1 <- rownames(dist_df)
-dist_df <- melt(dist_df, id.vars = "SampleID1")
-dist_df <- dist_df %>%
-  rename(SampleID2 = variable, distance = value) %>%
-  mutate(
-    SampleID1 = factor(SampleID1, levels = ordered_samples),
-    SampleID2 = factor(SampleID2, levels = ordered_samples)
-  )
-
-# Plot heatmap using ggplot2
-hist_jaccard_all <- ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
+# 6. Plot the heatmap faceted by pool
+hist_jaccard_all <- ggplot(dist_df_all, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
   scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
-    title = "",
+    title = "Jaccard's Distance Within Pools",
     x = "",
     y = "",
     fill = "Jaccard's Distance"
@@ -269,51 +318,62 @@ hist_jaccard_all <- ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = dis
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1),
     axis.text.y = element_text(angle = 0, hjust = 1)
-  )
+  ) +
+  facet_wrap(~ pool, scales = "free", ncol = 2)
 
+# Display the plot
 hist_jaccard_all
 
-ggsave("hist_jaccard_all.png", hist_jaccard_all, dpi = 300, height = 12, width = 15, bg = "white")
+ggsave("hist_jaccard_all2.png", hist_jaccard_all, dpi = 300, height = 30, width = 20, bg = "white")
+
+
 
 
 ##
-#visualize similaritites of samples with many contaminants through heatmap to track potential origin
-SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run[n_contams_per_run$n_contams > 10,]$sampleID # SELECT MINIMUM AMOUNF OF CONTAMINANTS
+# 1. Get the sampleIDs with many contaminants
+SAMPLES_WITH_MANY_CONTAMS <- n_contams_per_run %>%
+  filter(n_contams > 10) %>%
+  pull(sampleID)
 
-# Createreshape2# Create a binary matrix for allele presence/absence
-allele_matrix <- CONTAMINANTS[CONTAMINANTS$sampleID %in% SAMPLES_WITH_MANY_CONTAMS,] %>%
-  select(sampleID, locus) %>%
-  distinct() %>%
-  mutate(present = 1) %>%
-  spread(key = locus, value = present, fill = 0) %>%
-  column_to_rownames("sampleID")
+# 2. For each pool (within the selected samples), calculate the Jaccard distance
+dist_df_all <- CONTAMINANTS %>%
+  filter(sampleID %in% SAMPLES_WITH_MANY_CONTAMS) %>%
+  group_by(pool) %>%
+  do({
+    pool_data <- .
+    # 3. Create the binary allele matrix for this pool:
+    allele_matrix <- pool_data %>%
+      select(sampleID, locus) %>%
+      distinct() %>%
+      mutate(present = 1) %>%
+      spread(key = locus, value = present, fill = 0)
+    
+    # Set sampleID as row names (assumed unique within a pool)
+    allele_matrix <- allele_matrix %>% column_to_rownames("sampleID")
+    
+    # 4. Calculate the Jaccard distance for this pool
+    dist_matrix <- vegdist(allele_matrix, method = "jaccard")
+    
+    # 5. Convert the distance matrix to a long data frame
+    df <- as.data.frame(as.matrix(dist_matrix))
+    df$SampleID1 <- rownames(df)
+    df_long <- melt(df, id.vars = "SampleID1")
+    df_long <- df_long %>%
+      rename(SampleID2 = variable, distance = value) %>%
+      mutate(
+        SampleID1 = factor(SampleID1, levels = rownames(as.matrix(dist_matrix))),
+        SampleID2 = factor(SampleID2, levels = rownames(as.matrix(dist_matrix)))
+      )
+    df_long
+  }) %>%
+  ungroup()
 
-# Calculate the Jaccard distance between sampleIDs
-dist_matrix <- vegdist(allele_matrix, method = "jaccard")
-
-# Perform hierarchical clustering
-hc <- hclust(dist_matrix)
-
-# Get the order of samples based on clustering
-ordered_samples <- hc$labels[hc$order]
-
-# Convert distance matrix into a data frame for ggplot
-dist_df <- as.data.frame(as.matrix(dist_matrix))
-dist_df$SampleID1 <- rownames(dist_df)
-dist_df <- melt(dist_df, id.vars = "SampleID1")
-dist_df <- dist_df %>%
-  rename(SampleID2 = variable, distance = value) %>%
-  mutate(
-    SampleID1 = factor(SampleID1, levels = ordered_samples),
-    SampleID2 = factor(SampleID2, levels = ordered_samples)
-  )
-
-# Plot heatmap using ggplot2
-hist_jaccard_10plus <- ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = distance)) +
+# 6. Plot the heatmap faceted by pool
+hist_jaccard_10plus <- ggplot(dist_df_all, aes(x = SampleID1, y = SampleID2, fill = distance)) +
   geom_tile() +
   scale_fill_gradient(low = "orange", high = "blue", limits = c(0, 1)) +
   labs(
-    title = "",
+    title = "Jaccard's Distance Within Pools",
     x = "",
     y = "",
     fill = "Jaccard's Distance"
@@ -322,11 +382,18 @@ hist_jaccard_10plus <- ggplot(dist_df, aes(x = SampleID1, y = SampleID2, fill = 
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1),
     axis.text.y = element_text(angle = 0, hjust = 1)
-  )
+  ) +
+  facet_wrap(~ pool, scales = "free", ncol = 2)
 
+# Display the plot
 hist_jaccard_10plus
 
-ggsave("hist_jaccard_10plus.png", hist_jaccard_10plus, dpi = 300, height = 9, width = 11, bg = "white")
+
+
+ggsave("hist_jaccard_10plus2.png", hist_jaccard_10plus, dpi = 300, height = 20, width = 15, bg = "white")
+
+
+
 
 
 # *** FREQUENCY DISTRIBUTION OF CONTAMINANT ALLELES *** -------------------
@@ -367,7 +434,29 @@ contams2 <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
 
 contams2
 
-ggsave("contams2.png", contams2, dpi = 300, height = 10, width = 17, bg = "white")
+ggsave("contams22.png", contams2, dpi = 300, height = 10, width = 17, bg = "white")
+
+
+
+contams2_pool <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
+  geom_histogram(bins = 100, alpha = 0.5, position = "identity") +
+  scale_fill_manual(values = color_palette) +
+  labs(
+    title = "",
+    x = "In-sample allele frequency",
+    y = "Non-reference alleles"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank())+
+  guides(fill = guide_legend(ncol = 1))+
+  theme(
+    legend.position = "none"
+  ) +
+  facet_wrap(~pool, scales = "free_y", ncol = 2)
+
+contams2_pool
+
+ggsave("contams22_pool.png", contams2_pool, dpi = 300, height = 7, width = 7, bg = "white")
 
 
 # controls with contaminant alleles that have a freq = 1
