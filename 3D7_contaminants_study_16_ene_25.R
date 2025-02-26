@@ -84,6 +84,9 @@ merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
 # add run name to sampleID
 merged_dfs$sampleID <- paste0(merged_dfs$sampleID, "__", merged_dfs$run)
 
+# add lab variable
+merged_dfs$lab <- ifelse(grepl("000000000", merged_dfs$run), "CISM", "ISG")
+
 
 # ########## 4) RECALCULATE VALUES ################-------
 # #recalc reads
@@ -114,6 +117,9 @@ controls_data <- controls_data[!controls_data$sampleID %in% mislabelled_controls
 TOTAL_RUNS <- length(unique(controls_data$run))
 TOTAL_CONTROLS <- length(unique(controls_data$sampleID))
 
+# total runs and controls per lab
+total_runs_per_lab <- table(distinct(controls_data[c("run", "lab")])$lab); total_runs_per_lab
+total_controls_per_lab <- table(distinct(controls_data[c("sampleID", "lab")])$lab); total_controls_per_lab
 
 
 ############################################################
@@ -127,6 +133,16 @@ CONTAMINANTS_CONTROLS <- length(unique(CONTAMINANTS$sampleID))
 
 print(paste(CONTAMINANTS_RUNS, "out of", TOTAL_RUNS, "runs had contaminants"))
 print(paste(CONTAMINANTS_CONTROLS, "out of", TOTAL_CONTROLS, "controls across runs had contaminants"))
+
+# by lab
+contam_runs_per_lab <- table(distinct(CONTAMINANTS[c("run", "lab")])$lab); contam_runs_per_lab
+contam_controls_per_lab<- table(distinct(CONTAMINANTS[c("sampleID", "lab")])$lab); contam_controls_per_lab
+
+
+contam_runs_per_lab/total_runs_per_lab #percentage contaminated runs per pool
+contam_controls_per_lab/total_controls_per_lab #percentage contaminated runs per pool
+
+
 
 
 # *** ARE CONTAMINANT ALLELES REPEATED ACROSS RUNS? ***
@@ -161,7 +177,7 @@ contam_alleles <- ggplot(
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.text.x = element_text(size = 15, angle = 90, hjust = 1),
     axis.title.x = element_text(size = 14),        
     strip.text = element_text(size = 17, face = "bold"),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
@@ -448,6 +464,10 @@ contams2 <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
   theme(legend.title = element_blank())+
   guides(fill = guide_legend(ncol = 1))+
   theme(
+    axis.text.x = element_text(size = 8, angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 10),        
+    strip.text = element_text(size = 9, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
     legend.position = "none"
   ) +
   facet_wrap(~run, scales = "free_y")
@@ -470,6 +490,10 @@ contams2_pool <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)
   theme(legend.title = element_blank())+
   guides(fill = guide_legend(ncol = 1))+
   theme(
+    axis.text.x = element_text(size = 8, angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 10),        
+    strip.text = element_text(size = 9, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
     legend.position = "none"
   ) +
   facet_wrap(~pool, scales = "free_y", ncol = 2)
@@ -483,7 +507,7 @@ ggsave("contams22_pool.png", contams2_pool, dpi = 300, height = 7, width = 7, bg
 CONTAMINATED_CONTROLS_FREQ1 <- length(unique(CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]$sampleID))
 RUNS_WITH_CONTAMINATED_CONTROLS_FREQ1  <- length(unique(CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]$run))
 
-print(paste("There were", CONTAMINATED_CONTROLS_FREQ1, "3D7 controls with at least 1 fixed contaminant allele (norm.reads.locus = 1) across", RUNS_WITH_CONTAMINATED_CONTROLS_FREQ1, "runs"))
+print(paste("There were", CONTAMINATED_CONTROLS_FREQ1, " controls with at least 1 fixed contaminant allele (norm.reads.locus = 1) across", RUNS_WITH_CONTAMINATED_CONTROLS_FREQ1, "runs"))
 
 
 
@@ -527,13 +551,13 @@ for (sample in SAMPLES) {
     run = run,
     sampleID = sample,
     n_nonref_in_control = length(unique(subsample_CONTAMINANTS_data$allele)),
-    n_contams_in_field = length(unique(contaminants_in_field)),
-    contaminants_in_field = I(list(contaminants_in_field)),
-    n_contams_not_in_field = length(unique(contaminants_not_in_field)),
-    contaminants_not_in_field = I(list(contaminants_not_in_field)),
-    n_cross_contams = length(unique(n_cross_comtams)),
-    cross_contam_runs = I(list(unique(cross_contam_runs))),
-    n_unknown_contams = length(unique(n_contams_unknown))  
+    n_nonref_in_field = length(unique(contaminants_in_field)),
+    nonref_in_field = I(list(contaminants_in_field)),
+    n_nonref_not_in_field = length(unique(contaminants_not_in_field)),
+    nonref_not_in_field = I(list(contaminants_not_in_field)),
+    n_cross_nonref = length(unique(n_cross_comtams)),
+    cross_nonref_runs = I(list(unique(cross_contam_runs))),
+    n_unknown_nonref = length(unique(n_contams_unknown))  
   )
 }
 
@@ -549,7 +573,7 @@ contam_procedence_results <- contam_procedence_results %>%
 # Replace blanks (empty values) with NA for proper CSV formatting
 contam_procedence_results[contam_procedence_results == ""] <- NA
 
-contam_procedence_results <- contam_procedence_results %>% select(run, sampleID, n_nonref_in_control, n_contams_in_field, n_cross_contams, cross_contam_runs, n_unknown_contams)
+contam_procedence_results <- contam_procedence_results %>% select(run, sampleID, n_nonref_in_control, n_nonref_in_field, n_cross_nonref, cross_nonref_runs, n_unknown_nonref)
 
 # Write to CSV
 write.csv(contam_procedence_results, "contam_procedence_results2_all_pools_together.csv", row.names = FALSE, na = "")
@@ -596,13 +620,13 @@ for(pool in unique_pools) {
       run = run,
       sampleID = sample,
       n_nonref_in_control = length(unique(subsample_CONTAMINANTS_data$allele)),
-      n_contams_in_field = length(unique(contaminants_in_field)),
-      contaminants_in_field = I(list(contaminants_in_field)),
-      n_contams_not_in_field = length(unique(contaminants_not_in_field)),
-      contaminants_not_in_field = I(list(contaminants_not_in_field)),
-      n_cross_contams = length(unique(n_cross_comtams)),
-      cross_contam_runs = I(list(unique(cross_contam_runs))),
-      n_unknown_contams = length(unique(n_contams_unknown))  
+      n_nonref_in_field = length(unique(contaminants_in_field)),
+      nonref_in_field = I(list(contaminants_in_field)),
+      n_nonref_not_in_field = length(unique(contaminants_not_in_field)),
+      nonref_not_in_field = I(list(contaminants_not_in_field)),
+      n_cross_nonref = length(unique(n_cross_comtams)),
+      cross_nonref_runs = I(list(unique(cross_contam_runs))),
+      n_unknown_nonref = length(unique(n_contams_unknown))  
     )
   }
   
@@ -622,7 +646,7 @@ for(pool in unique_pools) {
   
   # Select columns in desired order (optional)
   pool_results <- pool_results %>%
-    select(run, sampleID, n_nonref_in_control, n_contams_in_field, n_cross_contams, cross_contam_runs, n_unknown_contams)
+    select(run, sampleID, n_nonref_in_control, n_nonref_in_field, n_cross_nonref, cross_nonref_runs, n_unknown_nonref)
   
   # Add a new column 'pool' to indicate the current pool
   pool_results$pool <- pool
@@ -653,67 +677,28 @@ write.csv(contam_procedence_results_POOLS, "contam_procedence_results2_separate_
 # Calculate percentages based on n_nonref_in_control (100%)
 contam_procedence_results_percentages <- contam_procedence_results %>%
   mutate(
-    perc_contams_in_field = (n_contams_in_field / n_nonref_in_control) * 100,
-    perc_cross_contams = (n_cross_contams / n_nonref_in_control) * 100,
-    perc_unknown_contams = (n_unknown_contams / n_nonref_in_control) * 100
+    perc_nonref_in_field = (n_nonref_in_field / n_nonref_in_control) * 100,
+    perc_cross_nonref = (n_cross_nonref / n_nonref_in_control) * 100,
+    perc_unknown_nonref = (n_unknown_nonref / n_nonref_in_control) * 100
   )
 
 
 # Reshape data to long format for ggplot
 contam_procedence_long <- contam_procedence_results_percentages %>%
-  select(sampleID, run, perc_contams_in_field, perc_cross_contams, perc_unknown_contams) %>%
-  pivot_longer(cols = c(perc_contams_in_field, perc_cross_contams, perc_unknown_contams),
-               names_to = "contam_type",
+  select(sampleID, run, perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref) %>%
+  pivot_longer(cols = c(perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref),
+               names_to = "nonref_type",
                values_to = "count")
 
-contam_procedence_long$contam_type <- gsub("perc_", "",contam_procedence_long$contam_type)
+contam_procedence_long$nonref_type <- gsub("perc_", "",contam_procedence_long$nonref_type)
 
 # Create stacked bar plot
-contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = contam_type)) +
+contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = nonref_type)) +
   geom_bar(stat = "identity", position = "stack") +  # Stacked bars
   facet_wrap(~run, scales = "free_x") +  # Facet by 'run'
-  scale_fill_manual(values = c("#1f78b4", "#e31a1c", "black")) +  # Custom colors
+  scale_fill_manual(values = c( "#e31a1c", "#1f78b4", "black")) +  # Custom colors
   labs(
-    x = "Sample ID",
-    y = "% Contaminants",
-    fill = "Source",
-    title = ""
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-
-contams3
-
-ggsave("contams32.png", contams3, dpi = 300, height = 13, width = 12, bg = "white")
-
-
-# per pool
-
-# Calculate percentages based on n_nonref_in_control (100%)
-contam_procedence_results_percentages <- contam_procedence_results_POOLS %>%
-  mutate(
-    perc_contams_in_field = (n_contams_in_field / n_nonref_in_control) * 100,
-    perc_cross_contams = (n_cross_contams / n_nonref_in_control) * 100,
-    perc_unknown_contams = (n_unknown_contams / n_nonref_in_control) * 100
-  )
-
-# contam_procedence_results_percentages$sampleID <- paste0(contam_procedence_results_percentages$sampleID, "_", seq_len(nrow(contam_procedence_results_percentages)))
-
-# Reshape data to long format for ggplot
-contam_procedence_long <- contam_procedence_results_percentages %>%
-  select(sampleID, run, perc_contams_in_field, perc_cross_contams, perc_unknown_contams, pool) %>%
-  pivot_longer(cols = c(perc_contams_in_field, perc_cross_contams, perc_unknown_contams),
-               names_to = "contam_type",
-               values_to = "count")
-
-contam_procedence_long$contam_type <- gsub("perc_", "",contam_procedence_long$contam_type)
-
-contams3_pools <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = contam_type)) +
-  geom_bar(stat = "identity", position = "stack") +  # Stacked bars
-  facet_grid(run ~ pool, scales = "free", space = "free") +  # Facet by both 'pool' and 'run'
-  scale_fill_manual(values = c("#1f78b4", "#e31a1c", "black")) +  # Custom colors
-  labs(
-    x = "Sample ID",
+    x = "Control",
     y = "% Non-reference alleles",
     fill = "Source",
     title = ""
@@ -721,14 +706,58 @@ contams3_pools <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fi
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1),
-    strip.text = element_text(size = 10),  # Format facet labels
+    strip.text = element_text(size = 6.5, face = "bold"),  # Format facet labels
+    strip.text.y = element_text(angle = 0, hjust = 0),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+  )
+
+contams3
+
+ggsave("contams32.png", contams3, dpi = 300, height = 13, width = 13, bg = "white")
+
+
+# per pool
+
+# Calculate percentages based on n_nonref_in_control (100%)
+contam_procedence_results_percentages <- contam_procedence_results_POOLS %>%
+  mutate(
+    perc_nonref_in_field = (n_nonref_in_field / n_nonref_in_control) * 100,
+    perc_cross_nonref = (n_cross_nonref / n_nonref_in_control) * 100,
+    perc_unknown_nonref = (n_unknown_nonref / n_nonref_in_control) * 100
+  )
+
+# contam_procedence_results_percentages$sampleID <- paste0(contam_procedence_results_percentages$sampleID, "_", seq_len(nrow(contam_procedence_results_percentages)))
+
+# Reshape data to long format for ggplot
+contam_procedence_long <- contam_procedence_results_percentages %>%
+  select(sampleID, run, perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref, pool) %>%
+  pivot_longer(cols = c(perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref),
+               names_to = "nonref_type",
+               values_to = "count")
+
+contam_procedence_long$nonref_type <- gsub("perc_", "",contam_procedence_long$nonref_type)
+
+contams3_pools <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = nonref_type)) +
+  geom_bar(stat = "identity", position = "stack") +  # Stacked bars
+  facet_grid(run ~ pool, scales = "free", space = "free") +  # Facet by both 'pool' and 'run'
+  scale_fill_manual(values = c("#e31a1c", "#1f78b4",  "black")) +  # Custom colors
+  labs(
+    x = "Control",
+    y = "% Non-reference alleles",
+    fill = "Source",
+    title = ""
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text = element_text(size = 8, face = "bold"),  # Format facet labels
     strip.text.y = element_text(angle = 0, hjust = 0)
     #panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
   )
 
 contams3_pools
 
-ggsave("contams32_pools.png", contams3_pools, dpi = 300, height = 12, width = 20, bg = "white")
+ggsave("contams32_pools.png", contams3_pools, dpi = 300, height = 14, width = 20, bg = "white")
 
 # # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
 # 
@@ -823,7 +852,12 @@ contam_thresholds_pools <- CONTAMINANTS_less_than_1 %>%
 
 contam_thresholds_pools
 
-write.csv(contam_thresholds_pools, "comtam_thresholds2_pools.csv")
+contam_thresholds_pools_OUT <- as.data.frame(t(contam_thresholds_pools))
+
+colnames(contam_thresholds_pools_OUT) <- contam_thresholds_pools_OUT[1,]
+contam_thresholds_pools_OUT <- contam_thresholds_pools_OUT[-1,]
+
+write.csv(contam_thresholds_pools_OUT, "comtam_thresholds2_pools.csv", row.names = T)
 
 
 # Convert contam_thresholds_pools to long format for better ggplot mapping
@@ -856,7 +890,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
 
 thresholds
 
-ggsave("thresholds2_pools.png", thresholds, height = 10, width = 16, dpi = 300, bg = "white")
+ggsave("thresholds2_pools.png", thresholds, height = 8, width = 12, dpi = 300, bg = "white")
 
 
 
@@ -865,8 +899,9 @@ ggsave("thresholds2_pools.png", thresholds, height = 10, width = 16, dpi = 300, 
 fixed_contams <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]
 
 table(fixed_contams$pool)
-
 table(fixed_contams$locus)
+table(fixed_contams$Category)
+
 
 
 # # missing alleles
