@@ -61,8 +61,11 @@ merged_dfs <- merged_dfs[merged_dfs$sampleID %in% good_sampleID, ]
 
 ########## 2) CONVERT MASKING INTO REF ################-------
 # ignore masking, turn it to ref (.)
-merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar)
-merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_dfs$pseudo_cigar), ".", merged_dfs$pseudo_cigar)
+merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar) #remove masking
+merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_dfs$pseudo_cigar), ".", merged_dfs$pseudo_cigar) # if empty, add "." since it was reference
+
+#aggregate unmasked sequences
+merged_dfs <- merged_dfs %>% group_by(sampleID, locus, pseudo_cigar, run, Category) %>% summarise(reads = sum(reads), norm.reads.locus = sum(norm.reads.locus))
 
 
 ########## 3) REMOVE BIOINFO ERRORS ################-------
