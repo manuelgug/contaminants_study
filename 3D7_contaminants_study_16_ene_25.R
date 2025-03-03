@@ -39,6 +39,10 @@ for (dir in filtered_dirs) {
 merged_dfs <- bind_rows(list_of_dfs)
 
 
+########## 0) ADD RUN NAME TO SAMPLEID TO AVOID AGGREGATING SAMPLES WITH IDENTIAL NAME BUT IN DIFF RUNS ################-------
+merged_dfs$sampleID <- paste0(merged_dfs$sampleID, "__", merged_dfs$run)
+
+
 ########## 1) KEEP QUALITY SAMPLES ################-------
 # identify sampleID with >=50 loci having >= 100 reads (NANNA'S AND SIMONE'S FILTER)
 good_sampleID <- merged_dfs %>%
@@ -59,6 +63,12 @@ good_sampleID <- merged_dfs %>%
 merged_dfs <- merged_dfs[merged_dfs$sampleID %in% good_sampleID, ]
 
 
+# keep samples with > 10000 reads: ANDRÉS
+read_counts_above_10K_reads <- merged_dfs %>% group_by(sampleID) %>% summarise(total_reads = sum(reads)) 
+read_counts_above_10K_reads <- read_counts_above_10K_reads[read_counts_above_10K_reads$total_reads > 10000,]
+merged_dfs <- merged_dfs[merged_dfs$sampleID %in% read_counts_above_10K_reads$sampleID, ]
+
+
 ########## 2) CONVERT MASKING INTO REF ################-------
 # ignore masking, turn it to ref (.)
 merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar) #remove masking
@@ -68,15 +78,30 @@ merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_d
 merged_dfs <- merged_dfs %>% group_by(sampleID, locus, pseudo_cigar, run, Category) %>% summarise(reads = sum(reads), norm.reads.locus = sum(norm.reads.locus))
 
 
-########## 3) REMOVE BIOINFO ERRORS ################-------
+########## 3) REMOVE INDELS ################-------
 # remove indels
 merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$pseudo_cigar),] #remove alleles with I (insertion)
 merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$pseudo_cigar),] #remove alleles with D (deletion)
 
 
+########### 4) 1% MAF FILTER
+merged_dfs <- merged_dfs[merged_dfs$norm.reads.locus > 0.01,]
+
+
+########### 5) REMOVE POOLS 1AB AND 1B2
+merged_dfs <- merged_dfs[!grepl("-1AB$|1B2", merged_dfs$locus),]
+
+
+########### 6) REMOVE KNOWN CONTAMINATED RUNS
+#merged_dfs <- merged_dfs[!merged_dfs$run %in% c("ASINT_NextSeq01","ASINT_NextSeq04", "ASINT_NextSeq05", "BOH22_NextSeq04", "ICAE_NextSeq01_demux_"), ]
+
+
+########### 7) REMOVE ALLELES WITH LESS THAN 10 READS
+merged_dfs <- merged_dfs[merged_dfs$reads > 10,]
+
+
+
 ########## 2) CREATE/MODIFY USEFUL VARIABLES ################-------
-# # keep 1A amps
-# merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
 
 #make pool variable
 merged_dfs$pool <-  str_extract(merged_dfs$locus, "[^-]+$")
@@ -84,25 +109,8 @@ merged_dfs$pool <-  str_extract(merged_dfs$locus, "[^-]+$")
 #create allele column
 merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
 
-# add run name to sampleID
-merged_dfs$sampleID <- paste0(merged_dfs$sampleID, "__", merged_dfs$run)
-
 # add lab variable
 merged_dfs$lab <- ifelse(grepl("000000000", merged_dfs$run), "CISM", "ISG")
-
-
-# ########## 4) RECALCULATE VALUES ################-------
-# #recalc reads
-# merged_dfs <- merged_dfs %>%
-#   group_by(run, sampleID, locus, allele, pool) %>%  # Group by sampleID, locus, and allele
-#   summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")  # Sum reads and drop grouping
-# 
-# #recalc norm.reads.locus
-# merged_dfs <- merged_dfs %>%
-#   group_by(sampleID, locus) %>%  # Group by sampleID and locus
-#   mutate(norm.reads.locus = reads / sum(reads, na.rm = TRUE)) %>%  # Calculate the proportion
-#   ungroup() 
-
 
 
 ########## 5) EXTRACT CONTROL DATA ################-------
@@ -113,6 +121,8 @@ controls_data <- merged_dfs[grepl("3d7", merged_dfs$sampleID, ignore.case = TRUE
 #remove known mislabelled controls:
 mislabelled_controls <- c("N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5", "N3D7100KA_S7__BOH22_Nextseq01", "N3D710kA_S56__BOH22_Nextseq01")
 controls_data <- controls_data[!controls_data$sampleID %in% mislabelled_controls,]
+
+controls_data %>% group_by(sampleID) %>% summarise(total_reads= sum(reads)) %>% arrange(total_reads) # check if all controls have > 10000 reads
 
 
 
@@ -677,23 +687,32 @@ write.csv(contam_procedence_results_POOLS, "contam_procedence_results2_separate_
 #   theme_minimal()
 
 
-# Calculate percentages based on n_nonref_in_control (100%)
-contam_procedence_results_percentages <- contam_procedence_results %>%
-  mutate(
-    perc_nonref_in_field = (n_nonref_in_field / n_nonref_in_control) * 100,
-    perc_cross_nonref = (n_cross_nonref / n_nonref_in_control) * 100,
-    perc_unknown_nonref = (n_unknown_nonref / n_nonref_in_control) * 100
-  )
+# # Calculate percentages based on n_nonref_in_control (100%)
+# contam_procedence_results_percentages <- contam_procedence_results %>%
+#   mutate(
+#     perc_nonref_in_field = (n_nonref_in_field / n_nonref_in_control) * 100,
+#     perc_cross_nonref = (n_cross_nonref / n_nonref_in_control) * 100,
+#     perc_unknown_nonref = (n_unknown_nonref / n_nonref_in_control) * 100
+#   )
+# 
+# 
+# # Reshape data to long format for ggplot
+# contam_procedence_long <- contam_procedence_results_percentages %>%
+#   select(sampleID, run, perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref) %>%
+#   pivot_longer(cols = c(perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref),
+#                names_to = "nonref_type",
+#                values_to = "count")
+# 
+# contam_procedence_long$nonref_type <- gsub("perc_", "",contam_procedence_long$nonref_type)
 
 
 # Reshape data to long format for ggplot
-contam_procedence_long <- contam_procedence_results_percentages %>%
-  select(sampleID, run, perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref) %>%
-  pivot_longer(cols = c(perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref),
+contam_procedence_long <- contam_procedence_results %>%
+  select(sampleID, run, n_nonref_in_field, n_cross_nonref, n_unknown_nonref) %>%
+  pivot_longer(cols = c(n_nonref_in_field, n_cross_nonref, n_unknown_nonref),
                names_to = "nonref_type",
                values_to = "count")
 
-contam_procedence_long$nonref_type <- gsub("perc_", "",contam_procedence_long$nonref_type)
 
 # Create stacked bar plot
 contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = nonref_type)) +
@@ -716,51 +735,51 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = n
 
 contams3
 
-ggsave("contams32.png", contams3, dpi = 300, height = 13, width = 13, bg = "white")
+ggsave("contams321.png", contams3, dpi = 300, height = 13, width = 13, bg = "white")
 
 
-# per pool
-
-# Calculate percentages based on n_nonref_in_control (100%)
-contam_procedence_results_percentages <- contam_procedence_results_POOLS %>%
-  mutate(
-    perc_nonref_in_field = (n_nonref_in_field / n_nonref_in_control) * 100,
-    perc_cross_nonref = (n_cross_nonref / n_nonref_in_control) * 100,
-    perc_unknown_nonref = (n_unknown_nonref / n_nonref_in_control) * 100
-  )
-
-# contam_procedence_results_percentages$sampleID <- paste0(contam_procedence_results_percentages$sampleID, "_", seq_len(nrow(contam_procedence_results_percentages)))
-
-# Reshape data to long format for ggplot
-contam_procedence_long <- contam_procedence_results_percentages %>%
-  select(sampleID, run, perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref, pool) %>%
-  pivot_longer(cols = c(perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref),
-               names_to = "nonref_type",
-               values_to = "count")
-
-contam_procedence_long$nonref_type <- gsub("perc_", "",contam_procedence_long$nonref_type)
-
-contams3_pools <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = nonref_type)) +
-  geom_bar(stat = "identity", position = "stack") +  # Stacked bars
-  facet_grid(run ~ pool, scales = "free", space = "free") +  # Facet by both 'pool' and 'run'
-  scale_fill_manual(values = c("#e31a1c", "#1f78b4",  "black")) +  # Custom colors
-  labs(
-    x = "Control",
-    y = "% Non-reference alleles",
-    fill = "Source",
-    title = ""
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    strip.text = element_text(size = 8, face = "bold"),  # Format facet labels
-    strip.text.y = element_text(angle = 0, hjust = 0)
-    #panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
-  )
-
-contams3_pools
-
-ggsave("contams32_pools.png", contams3_pools, dpi = 300, height = 14, width = 20, bg = "white")
+# # per pool
+# 
+# # Calculate percentages based on n_nonref_in_control (100%)
+# contam_procedence_results_percentages <- contam_procedence_results_POOLS %>%
+#   mutate(
+#     perc_nonref_in_field = (n_nonref_in_field / n_nonref_in_control) * 100,
+#     perc_cross_nonref = (n_cross_nonref / n_nonref_in_control) * 100,
+#     perc_unknown_nonref = (n_unknown_nonref / n_nonref_in_control) * 100
+#   )
+# 
+# # contam_procedence_results_percentages$sampleID <- paste0(contam_procedence_results_percentages$sampleID, "_", seq_len(nrow(contam_procedence_results_percentages)))
+# 
+# # Reshape data to long format for ggplot
+# contam_procedence_long <- contam_procedence_results_percentages %>%
+#   select(sampleID, run, perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref, pool) %>%
+#   pivot_longer(cols = c(perc_nonref_in_field, perc_cross_nonref, perc_unknown_nonref),
+#                names_to = "nonref_type",
+#                values_to = "count")
+# 
+# contam_procedence_long$nonref_type <- gsub("perc_", "",contam_procedence_long$nonref_type)
+# 
+# contams3_pools <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = nonref_type)) +
+#   geom_bar(stat = "identity", position = "stack") +  # Stacked bars
+#   facet_grid(run ~ pool, scales = "free", space = "free") +  # Facet by both 'pool' and 'run'
+#   scale_fill_manual(values = c("#e31a1c", "#1f78b4",  "black")) +  # Custom colors
+#   labs(
+#     x = "Control",
+#     y = "% Non-reference alleles",
+#     fill = "Source",
+#     title = ""
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(angle = 90, hjust = 1),
+#     strip.text = element_text(size = 8, face = "bold"),  # Format facet labels
+#     strip.text.y = element_text(angle = 0, hjust = 0)
+#     #panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+#   )
+# 
+# contams3_pools
+# 
+# ggsave("contams32_pools.png", contams3_pools, dpi = 300, height = 14, width = 20, bg = "white")
 
 # # *** MISSING (REF) ALLELES IN 3D7 CONTROLS  *** -------------------
 # 
@@ -859,6 +878,8 @@ contam_thresholds_pools_OUT <- as.data.frame(t(contam_thresholds_pools))
 
 colnames(contam_thresholds_pools_OUT) <- contam_thresholds_pools_OUT[1,]
 contam_thresholds_pools_OUT <- contam_thresholds_pools_OUT[-1,]
+
+contam_thresholds_pools_OUT
 
 write.csv(contam_thresholds_pools_OUT, "comtam_thresholds2_pools.csv", row.names = T)
 
