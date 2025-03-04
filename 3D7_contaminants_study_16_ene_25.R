@@ -7,6 +7,7 @@ library(vegan)
 library(tibble)
 library(reshape2)
 library(stringr)
+library(forcats)
 
 
 ####### 0) PARAMETERS AND INPUTS #######--------------------
@@ -124,7 +125,8 @@ controls_data <- controls_data[!controls_data$sampleID %in% mislabelled_controls
 
 controls_data %>% group_by(sampleID) %>% summarise(total_reads= sum(reads)) %>% arrange(total_reads) # check if all controls have > 10000 reads
 
-
+#asign parasitemia categories. 10K and 100K = high; 1K and 100 = low.
+controls_data$parasitemia <- ifelse(grepl("100K|10K", controls_data$sampleID, ignore.case = T), "High_Parasitemia","Low_Parasitemia")
 
 
 TOTAL_RUNS <- length(unique(controls_data$run))
@@ -160,49 +162,109 @@ contam_controls_per_lab/total_controls_per_lab #percentage contaminated runs per
 
 # *** ARE CONTAMINANT ALLELES REPEATED ACROSS RUNS? ***
 
-ALLELE_COUNT <- table(CONTAMINANTS$allele)
-allele_df <- as.data.frame(ALLELE_COUNT)
-colnames(allele_df) <- c("allele", "count")
+CONTAMINANTNS_SUMMARY <- CONTAMINANTS %>% group_by(lab, pool, parasitemia) %>% summarise(unique_nonref =length(unique(allele)))
 
-allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(allele_df$count)])
-
-length(unique(allele_df$allele))
-length(unique(CONTAMINANTS$locus))
-
-#put the pool variable
-allele_df <- left_join(allele_df, controls_data[c("allele", "pool")], by = "allele") %>% distinct()
-
-allele_df <- allele_df %>%
-  group_by(pool) %>%
-  arrange(pool, desc(count), .by_group = TRUE)
-
-# Create a ggplot histogram
-contam_alleles <- ggplot(
-  allele_df %>% 
-    filter(count > 1) %>% 
-    mutate(allele = reorder(allele, count)),  # Reorder by count
-  aes(x = allele, y = count)
-) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "white") +
+parasitemia_plots <- ggplot(CONTAMINANTNS_SUMMARY, aes(x = pool, y = unique_nonref, fill = parasitemia)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+  facet_wrap(~lab) +  # Facet by lab
+  scale_fill_manual(values = c("High_Parasitemia" = "orange2", "Low_Parasitemia" = "green3")) +  # Custom colors
   labs(
-    x = "Allele",
-    y = "Count",
+    x = "Pool",
+    y = "Unique Non-Ref Alleles",
+    fill = "",
     title = ""
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(size = 15, angle = 90, hjust = 1),
+    axis.text.x = element_text(size = 15, angle = 0, hjust = 1),
     axis.title.x = element_text(size = 14),        
     strip.text = element_text(size = 17, face = "bold"),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+  )
+
+parasitemia_plots
+
+ggsave("parasitemia_plots.png", parasitemia_plots, dpi = 300, height = 5, width = 8, bg = "white")
+
+
+
+ALLELE_COUNT <-  CONTAMINANTS %>% group_by(lab, pool, parasitemia, allele) %>% summarise(count =length(unique(allele)))
+
+length(unique(ALLELE_COUNT$allele))
+length(unique(CONTAMINANTS$locus))
+
+ALLELE_COUNT <- ALLELE_COUNT %>%
+  mutate(allele = fct_reorder(allele, -as.numeric(factor(pool))))
+
+allele_counts_plot <- ggplot(ALLELE_COUNT, aes(x = allele, y = count, fill = pool)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+  facet_grid(lab ~ parasitemia, scales = "free_y", space="free_y") +  # Facet by lab and pool
+  scale_fill_manual(values = c("1A" = "red", "1B" = "blue", "2" = "green")) +  # Custom colors
+  labs(
+    x = "Allele",
+    y = "Count",
+    fill = "Pool",
+    title = ""
   ) +
-  coord_flip() +
-  facet_wrap(~pool, scales = "free", ncol = 1)  # Use "free_y" to allow different y-axis scales per facet
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 90, hjust = 1),
+    axis.text.y = element_text(size = 7),
+    axis.title.x = element_text(size = 14),        
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    legend.text = element_text(size = 12),   # Increases legend text size
+    legend.title = element_text(size = 14) 
+  )+
+  coord_flip()
+
+allele_counts_plot
+
+ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 18, width = 20, bg = "white")
 
 
-contam_alleles
+# ALLELE_COUNT <- table(CONTAMINANTS$allele)
+# allele_df <- as.data.frame(ALLELE_COUNT)
+# colnames(allele_df) <- c("allele", "count")
+# 
+# allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(allele_df$count)])
+# 
+# 
+# #put the pool variable
+# allele_df <- left_join(allele_df, controls_data[c("allele", "pool")], by = "allele") %>% distinct()
+# 
+# allele_df <- allele_df %>%
+#   group_by(pool) %>%
+#   arrange(pool, desc(count), .by_group = TRUE)
+# 
+# # Create a ggplot histogram
+# contam_alleles <- ggplot(
+#   ALLELE_COUNT %>% 
+#     filter(count > 1) %>% 
+#     mutate(allele = reorder(allele, count)),  # Reorder by count
+#   aes(x = allele, y = count)
+# ) +
+#   geom_bar(stat = "identity", fill = "skyblue", color = "white") +
+#   labs(
+#     x = "Allele",
+#     y = "Count",
+#     title = ""
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(size = 15, angle = 90, hjust = 1),
+#     axis.title.x = element_text(size = 14),        
+#     strip.text = element_text(size = 17, face = "bold"),
+#     panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+#   ) +
+#   coord_flip() +
+#   facet_wrap(~pool, scales = "free", ncol = 1)  # Use "free_y" to allow different y-axis scales per facet
+# 
+# 
+# contam_alleles
+# 
+# ggsave("contam_alleles2.png", contam_alleles, dpi = 300, height = 14, width = 27, bg = "white")
 
-ggsave("contam_alleles2.png", contam_alleles, dpi = 300, height = 14, width = 27, bg = "white")
 
 
 # save contaminant allele df
@@ -215,46 +277,77 @@ CONTAMINANTS_output <- CONTAMINANTS_output %>% arrange(lab, run, pool, sampleID,
 write.csv(CONTAMINANTS_output, "CONTAMINANTS_output.csv", row.names = F)
 
 
+LOCI_COUNT <-  CONTAMINANTS %>% group_by(lab, pool, parasitemia, locus) %>% summarise(count =length(unique(locus)))
 
-LOCI_COUNT <- table(CONTAMINANTS$locus)
-loci_df <- as.data.frame(LOCI_COUNT)
-colnames(loci_df) <- c("locus", "count")
+length(unique(LOCI_COUNT$locus))
 
-loci_df$locus <- factor(loci_df$locus, levels = loci_df$locus[order(loci_df$count)])
+LOCI_COUNT <- LOCI_COUNT %>%
+  mutate(locus = fct_reorder(locus, -as.numeric(factor(pool))))
 
-loci_df <- left_join(loci_df, controls_data[c("locus", "pool")], by = "locus") %>% distinct()
-
-# Create a ggplot histogram
-contam_loci <- ggplot( loci_df %>% 
-                         filter(count > 1) %>% 
-                         mutate(locus = reorder(locus, count)),  # Reorder by count
-                       aes(x = locus, y = count)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "white") +
+loci_counts_plot <- ggplot(LOCI_COUNT, aes(x = locus, y = count, fill = pool)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+  facet_grid(lab ~ parasitemia, scales = "free_y", space="free_y") +  # Facet by lab and pool
+  scale_fill_manual(values = c("1A" = "red", "1B" = "blue", "2" = "green")) +  # Custom colors
   labs(
-    x = "Locus",
-    y = "Non-reference alleles",
+    x = "Allele",
+    y = "Count",
+    fill = "Pool",
     title = ""
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.text.x = element_text(size = 10, angle = 90, hjust = 1),
+    axis.text.y = element_text(size = 7),
     axis.title.x = element_text(size = 14),        
     strip.text = element_text(size = 17, face = "bold"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
-  ) +
-  coord_flip()+
-  facet_wrap(~pool, scales = "free", ncol = 2) 
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    legend.text = element_text(size = 12),   # Increases legend text size
+    legend.title = element_text(size = 14) 
+  )+
+  coord_flip()
 
-contam_loci
+loci_counts_plot
 
-ggsave("contam_loci2.png", contam_loci, dpi = 300, height = 15, width = 15, bg = "white")
+
+# LOCI_COUNT <- table(CONTAMINANTS$locus)
+# loci_df <- as.data.frame(LOCI_COUNT)
+# colnames(loci_df) <- c("locus", "count")
+# 
+# loci_df$locus <- factor(loci_df$locus, levels = loci_df$locus[order(loci_df$count)])
+# 
+# loci_df <- left_join(loci_df, controls_data[c("locus", "pool")], by = "locus") %>% distinct()
+# 
+# # Create a ggplot histogram
+# contam_loci <- ggplot( loci_df %>% 
+#                          filter(count > 1) %>% 
+#                          mutate(locus = reorder(locus, count)),  # Reorder by count
+#                        aes(x = locus, y = count)) +
+#   geom_bar(stat = "identity", fill = "skyblue", color = "white") +
+#   labs(
+#     x = "Locus",
+#     y = "Non-reference alleles",
+#     title = ""
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+#     axis.title.x = element_text(size = 14),        
+#     strip.text = element_text(size = 17, face = "bold"),
+#     panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+#   ) +
+#   coord_flip()+
+#   facet_wrap(~pool, scales = "free", ncol = 2) 
+# 
+# contam_loci
+# 
+# ggsave("contam_loci2.png", contam_loci, dpi = 300, height = 15, width = 15, bg = "white")
 
 
 
 # *** NUMBER OF CONTAMINANT ALLELES PER CONTROL ***-------------------------
 
 n_contams_per_run <- CONTAMINANTS %>%
-  group_by(run, sampleID, pool) %>%
+  group_by(run, sampleID, lab, pool, parasitemia) %>%
   summarise(n_contams = length(unique(allele)))
 
 n_contams_per_run
@@ -277,27 +370,34 @@ n_contams_per_run <- n_contams_per_run %>%
   mutate(sampleID_plot = factor(sampleID_plot, levels = unique(sampleID_plot))) %>%
   ungroup()
 
+n_contams_per_run <- n_contams_per_run %>%
+  mutate(sampleID = fct_reorder(sampleID, -as.numeric(factor(run))))
 
 
 #plot
 contams1  <- ggplot(n_contams_per_run,
-                    aes(x = sampleID_plot, y = n_contams, fill = run)) +
+                    aes(x = sampleID, y = n_contams, fill = pool)) +
   geom_bar(stat = "identity", color = "black") +
-  scale_fill_manual(values = color_palette) +
+  facet_grid(lab ~ parasitemia, scales = "free", space="free") +  # Facet by lab and pool
+  scale_fill_manual(values = c("1A" = "red", "1B" = "blue", "2" = "green")) +  # Custom colors
   labs(
-    x = "3D7 control",
+    x = "Controls",
     y = "Non-reference alleles",
-    fill = "Run"
+    fill = "Pool"
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(size = 6, angle = 90, hjust = 1),
-    #axis.title.x = element_text(size = 14),        
+    axis.text.x = element_text(size = 10, angle = 90, hjust = 1),
+    axis.text.y = element_text(size = 10),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),        
     strip.text = element_text(size = 17, face = "bold"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
-  ) +
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    legend.text = element_text(size = 12),   # Increases legend text size
+    legend.title = element_text(size = 14) 
+  )+
   guides(fill = guide_legend(ncol = 1))+
-  facet_wrap(~pool, scales = "free", ncol = 2)
+  coord_flip()
 
 
 contams1
@@ -376,7 +476,7 @@ hist_jaccard_all <- ggplot(dist_df_all, aes(x = SampleID1, y = SampleID2, fill =
 # Display the plot
 hist_jaccard_all
 
-ggsave("hist_jaccard_all2.png", hist_jaccard_all, dpi = 300, height = 20, width = 20, bg = "white")
+ggsave("hist_jaccard_all3.png", hist_jaccard_all, dpi = 300, height = 20, width = 20, bg = "white")
 
 
 
@@ -450,7 +550,7 @@ hist_jaccard_10plus <- ggplot(dist_df_all, aes(x = SampleID1, y = SampleID2, fil
 # Display the plot
 hist_jaccard_10plus
 
-ggsave("hist_jaccard_10plus2.png", hist_jaccard_10plus, dpi = 300, height = 20, width = 20, bg = "white")
+ggsave("hist_jaccard_10plus3.png", hist_jaccard_10plus, dpi = 300, height = 20, width = 20, bg = "white")
 
 
 
@@ -464,67 +564,71 @@ num_colors <- length(unique(CONTAMINANTS$sampleID))
 
 color_palette <- rgb(runif(num_colors), runif(num_colors), runif(num_colors))
 
-ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black") +
-  scale_fill_manual(values = color_palette) +
-  labs(
-    title = "",
-    x = "In-sample allele frequency",
-    y = "Count"
-  ) +
-  theme_minimal() +
-  theme(legend.title = element_blank())+
-  guides(fill = guide_legend(ncol = 1))
+# ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
+#   geom_histogram(bins = 100, alpha = 0.5, position = "identity", color = "black") +
+#   scale_fill_manual(values = color_palette) +
+#   labs(
+#     title = "",
+#     x = "In-sample allele frequency",
+#     y = "Count"
+#   ) +
+#   theme_minimal() +
+#   theme(legend.title = element_blank())+
+#   guides(fill = guide_legend(ncol = 1))
 
-contams2 <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
+contams2 <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = pool)) +
   geom_histogram(bins = 100, alpha = 0.5, position = "identity") +
-  scale_fill_manual(values = color_palette) +
+  facet_grid(lab ~ parasitemia, scales = "free", space="free") +  # Facet by lab and pool
+  scale_fill_manual(values = c("1A" = "red", "1B" = "blue", "2" = "green")) +  # Custom colors
   labs(
     title = "",
     x = "In-sample allele frequency",
-    y = "Non-reference alleles"
+    y = "Non-reference alleles",
+    fill = "Pool"
   ) +
   theme_minimal() +
-  theme(legend.title = element_blank())+
-  guides(fill = guide_legend(ncol = 1))+
+  #theme(legend.title = element_blank())+
+  #guides(fill = guide_legend(ncol = 1))+
   theme(
-    axis.text.x = element_text(size = 8, angle = 90, hjust = 1),
-    axis.title.x = element_text(size = 10),        
-    strip.text = element_text(size = 9, face = "bold"),
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 1),
+    axis.text.y = element_text(size = 12, angle = 0, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    axis.title.y = element_text(size = 14),     
+    strip.text = element_text(size = 17, face = "bold"),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
-    legend.position = "none"
-  ) +
-  facet_wrap(~run, scales = "free_y")
+    legend.text = element_text(size = 12),   # Increases legend text size
+    legend.title = element_text(size = 14) 
+  ) 
 
 contams2
 
-ggsave("contams22.png", contams2, dpi = 300, height = 10, width = 17, bg = "white")
+ggsave("contams23.png", contams2, dpi = 300, height = 10, width = 17, bg = "white")
 
 
 
-contams2_pool <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity") +
-  scale_fill_manual(values = color_palette) +
-  labs(
-    title = "",
-    x = "In-sample allele frequency",
-    y = "Non-reference alleles"
-  ) +
-  theme_minimal() +
-  theme(legend.title = element_blank())+
-  guides(fill = guide_legend(ncol = 1))+
-  theme(
-    axis.text.x = element_text(size = 8, angle = 90, hjust = 1),
-    axis.title.x = element_text(size = 10),        
-    strip.text = element_text(size = 9, face = "bold"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
-    legend.position = "none"
-  ) +
-  facet_wrap(~pool, scales = "free_y", ncol = 2)
-
-contams2_pool
-
-ggsave("contams22_pool.png", contams2_pool, dpi = 300, height = 7, width = 7, bg = "white")
+# contams2_pool <- ggplot(CONTAMINANTS, aes(x = norm.reads.locus, fill = sampleID)) +
+#   geom_histogram(bins = 100, alpha = 0.5, position = "identity") +
+#   scale_fill_manual(values = color_palette) +
+#   labs(
+#     title = "",
+#     x = "In-sample allele frequency",
+#     y = "Non-reference alleles"
+#   ) +
+#   theme_minimal() +
+#   theme(legend.title = element_blank())+
+#   guides(fill = guide_legend(ncol = 1))+
+#   theme(
+#     axis.text.x = element_text(size = 8, angle = 90, hjust = 1),
+#     axis.title.x = element_text(size = 10),        
+#     strip.text = element_text(size = 9, face = "bold"),
+#     panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+#     legend.position = "none"
+#   ) +
+#   facet_wrap(~pool, scales = "free_y", ncol = 2)
+# 
+# contams2_pool
+# 
+# ggsave("contams22_pool.png", contams2_pool, dpi = 300, height = 7, width = 7, bg = "white")
 
 
 # controls with contaminant alleles that have a freq = 1
@@ -587,6 +691,9 @@ for (sample in SAMPLES) {
 
 contam_procedence_results <- do.call(rbind, contam_procedence_results)
 
+# add parasitemia classification
+contam_procedence_results <- left_join(contam_procedence_results, unique(CONTAMINANTS[c("sampleID", "parasitemia", "lab")]), by= "sampleID")
+
 contam_procedence_results$sampleID <- sub("__.*", "", contam_procedence_results$sampleID)
 rownames(contam_procedence_results) <- NULL
 
@@ -597,96 +704,98 @@ contam_procedence_results <- contam_procedence_results %>%
 # Replace blanks (empty values) with NA for proper CSV formatting
 contam_procedence_results[contam_procedence_results == ""] <- NA
 
-contam_procedence_results <- contam_procedence_results %>% select(run, sampleID, n_nonref_in_control, n_nonref_in_field, n_cross_nonref, cross_nonref_runs, n_unknown_nonref)
+contam_procedence_results <- contam_procedence_results %>% 
+  select(run, sampleID, lab, parasitemia, n_nonref_in_control, n_nonref_in_field, n_cross_nonref, cross_nonref_runs, n_unknown_nonref) %>%
+  arrange(lab, parasitemia, run)
 
 # Write to CSV
 write.csv(contam_procedence_results, "contam_procedence_results2_all_pools_together.csv", row.names = FALSE, na = "")
 
 
 
-### B) for each pool separately
-
-# Create an empty list to store results from each pool
-all_results <- list()
-
-unique_pools <- unique(CONTAMINANTS$pool)
-
-for(pool in unique_pools) {
-  
-  CONTAMINANTS_pool <- CONTAMINANTS[CONTAMINANTS$pool == pool,]
-  field_data_pool <- field_data[field_data$pool == pool,]
-  
-  contam_procedence <- list()
-  
-  for (sample in SAMPLES) {
-    
-    subsample_CONTAMINANTS_data <- CONTAMINANTS_pool[CONTAMINANTS_pool$sampleID == sample,]
-    
-    run <- strsplit(sample, "__")[[1]][2]
-    
-    subsample_filed_data <- field_data_pool[field_data_pool$run == run,]
-    
-    #contaminants found in field samples from same run 
-    contaminants_in_field <- intersect(subsample_CONTAMINANTS_data$allele, subsample_filed_data$allele)
-    
-    #store the contaminants not found in field samples from same run 
-    contaminants_not_in_field <- setdiff(subsample_CONTAMINANTS_data$allele, subsample_filed_data$allele)
-    
-    # # of cross contamination contaminants (contaminants not found in same run but found in others) and thee runs they belong to
-    n_cross_comtams <- intersect(contaminants_not_in_field, field_data$allele)
-    cross_contam_runs <- field_data[field_data$allele %in% contaminants_not_in_field,]$run
-    
-    # contaminants not in same and other runs. oriigin unknown
-    n_contams_unknown <- setdiff(contaminants_not_in_field, field_data$allele)
-    
-    
-    contam_procedence[[sample]] <- data.frame(
-      run = run,
-      sampleID = sample,
-      n_nonref_in_control = length(unique(subsample_CONTAMINANTS_data$allele)),
-      n_nonref_in_field = length(unique(contaminants_in_field)),
-      nonref_in_field = I(list(contaminants_in_field)),
-      n_nonref_not_in_field = length(unique(contaminants_not_in_field)),
-      nonref_not_in_field = I(list(contaminants_not_in_field)),
-      n_cross_nonref = length(unique(n_cross_comtams)),
-      cross_nonref_runs = I(list(unique(cross_contam_runs))),
-      n_unknown_nonref = length(unique(n_contams_unknown))  
-    )
-  }
-  
-  # Combine the results for the current pool into one data frame
-  pool_results <- do.call(rbind, contam_procedence)
-  
-  # Remove the part after "__" from sampleID if desired
-  pool_results$sampleID <- sub("__.*", "", pool_results$sampleID)
-  rownames(pool_results) <- NULL
-  
-  # Convert list-columns to comma-separated strings for CSV output
-  pool_results <- pool_results %>%
-    mutate(across(where(is.list), ~ sapply(., toString)))
-  
-  # Replace blank strings with NA for proper CSV formatting
-  pool_results[pool_results == ""] <- NA
-  
-  # Select columns in desired order (optional)
-  pool_results <- pool_results %>%
-    select(run, sampleID, n_nonref_in_control, n_nonref_in_field, n_cross_nonref, cross_nonref_runs, n_unknown_nonref)
-  
-  # Add a new column 'pool' to indicate the current pool
-  pool_results$pool <- pool
-  
-  # Store the pool results in the overall list
-  all_results[[pool]] <- pool_results
-  
-}
-
-# Combine results from all pools into a single data frame
-contam_procedence_results_POOLS <- do.call(rbind, all_results)
-                                           
-# Write final results to a CSV file
-write.csv(contam_procedence_results_POOLS, "contam_procedence_results2_separate_pools.csv", row.names = FALSE, na = "")
-
-
+# ### B) for each pool separately
+# 
+# # Create an empty list to store results from each pool
+# all_results <- list()
+# 
+# unique_pools <- unique(CONTAMINANTS$pool)
+# 
+# for(pool in unique_pools) {
+#   
+#   CONTAMINANTS_pool <- CONTAMINANTS[CONTAMINANTS$pool == pool,]
+#   field_data_pool <- field_data[field_data$pool == pool,]
+#   
+#   contam_procedence <- list()
+#   
+#   for (sample in SAMPLES) {
+#     
+#     subsample_CONTAMINANTS_data <- CONTAMINANTS_pool[CONTAMINANTS_pool$sampleID == sample,]
+#     
+#     run <- strsplit(sample, "__")[[1]][2]
+#     
+#     subsample_filed_data <- field_data_pool[field_data_pool$run == run,]
+#     
+#     #contaminants found in field samples from same run 
+#     contaminants_in_field <- intersect(subsample_CONTAMINANTS_data$allele, subsample_filed_data$allele)
+#     
+#     #store the contaminants not found in field samples from same run 
+#     contaminants_not_in_field <- setdiff(subsample_CONTAMINANTS_data$allele, subsample_filed_data$allele)
+#     
+#     # # of cross contamination contaminants (contaminants not found in same run but found in others) and thee runs they belong to
+#     n_cross_comtams <- intersect(contaminants_not_in_field, field_data$allele)
+#     cross_contam_runs <- field_data[field_data$allele %in% contaminants_not_in_field,]$run
+#     
+#     # contaminants not in same and other runs. oriigin unknown
+#     n_contams_unknown <- setdiff(contaminants_not_in_field, field_data$allele)
+#     
+#     
+#     contam_procedence[[sample]] <- data.frame(
+#       run = run,
+#       sampleID = sample,
+#       n_nonref_in_control = length(unique(subsample_CONTAMINANTS_data$allele)),
+#       n_nonref_in_field = length(unique(contaminants_in_field)),
+#       nonref_in_field = I(list(contaminants_in_field)),
+#       n_nonref_not_in_field = length(unique(contaminants_not_in_field)),
+#       nonref_not_in_field = I(list(contaminants_not_in_field)),
+#       n_cross_nonref = length(unique(n_cross_comtams)),
+#       cross_nonref_runs = I(list(unique(cross_contam_runs))),
+#       n_unknown_nonref = length(unique(n_contams_unknown))  
+#     )
+#   }
+#   
+#   # Combine the results for the current pool into one data frame
+#   pool_results <- do.call(rbind, contam_procedence)
+#   
+#   # Remove the part after "__" from sampleID if desired
+#   pool_results$sampleID <- sub("__.*", "", pool_results$sampleID)
+#   rownames(pool_results) <- NULL
+#   
+#   # Convert list-columns to comma-separated strings for CSV output
+#   pool_results <- pool_results %>%
+#     mutate(across(where(is.list), ~ sapply(., toString)))
+#   
+#   # Replace blank strings with NA for proper CSV formatting
+#   pool_results[pool_results == ""] <- NA
+#   
+#   # Select columns in desired order (optional)
+#   pool_results <- pool_results %>%
+#     select(run, sampleID, n_nonref_in_control, n_nonref_in_field, n_cross_nonref, cross_nonref_runs, n_unknown_nonref)
+#   
+#   # Add a new column 'pool' to indicate the current pool
+#   pool_results$pool <- pool
+#   
+#   # Store the pool results in the overall list
+#   all_results[[pool]] <- pool_results
+#   
+# }
+# 
+# # Combine results from all pools into a single data frame
+# contam_procedence_results_POOLS <- do.call(rbind, all_results)
+#                                            
+# # Write final results to a CSV file
+# write.csv(contam_procedence_results_POOLS, "contam_procedence_results2_separate_pools.csv", row.names = FALSE, na = "")
+# 
+# 
 
 # ggplot(contam_procedence_results, aes(x = percentage_contams_in_field_samples_from_run)) +
 #   geom_histogram(bins = 50, color = "black", fill = "blue", alpha = 0.7) +
@@ -719,17 +828,22 @@ write.csv(contam_procedence_results_POOLS, "contam_procedence_results2_separate_
 
 # Reshape data to long format for ggplot
 contam_procedence_long <- contam_procedence_results %>%
-  select(sampleID, run, n_nonref_in_field, n_cross_nonref, n_unknown_nonref) %>%
+  select(sampleID, run, lab, parasitemia, n_nonref_in_field, n_cross_nonref, n_unknown_nonref) %>%
   pivot_longer(cols = c(n_nonref_in_field, n_cross_nonref, n_unknown_nonref),
                names_to = "nonref_type",
                values_to = "count")
 
 
+contam_procedence_long$sampleID_plot <- paste0(contam_procedence_long$sampleID, "__", contam_procedence_long$run)
+
+contam_procedence_long <- contam_procedence_long %>%
+  mutate(sampleID_plot = fct_reorder(sampleID_plot, as.numeric(factor(run))))
+
 # Create stacked bar plot
-contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = nonref_type)) +
-  geom_bar(stat = "identity", position = "stack") +  # Stacked bars
-  facet_wrap(~run, scales = "free_x") +  # Facet by 'run'
-  scale_fill_manual(values = c( "#e31a1c", "#1f78b4", "black")) +  # Custom colors
+contams3 <- ggplot(contam_procedence_long, aes(x = sampleID_plot, y = count, fill = nonref_type)) +
+  geom_bar(stat = "identity", position = "stack") +  
+  facet_grid(lab ~ parasitemia, scales = "free", space="free") + 
+  scale_fill_manual(values = c( "#e31a1c", "#1f78b4", "black")) +  
   labs(
     x = "Control",
     y = "Non-reference alleles",
@@ -738,15 +852,20 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = n
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    strip.text = element_text(size = 6.5, face = "bold"),  # Format facet labels
-    strip.text.y = element_text(angle = 0, hjust = 0),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
-  )
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 1),
+    axis.text.y = element_text(size = 12, angle = 0, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    axis.title.y = element_text(size = 14),     
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    legend.text = element_text(size = 12),   # Increases legend text size
+    legend.title = element_text(size = 14) 
+  ) +
+  coord_flip()
 
 contams3
 
-ggsave("contams321.png", contams3, dpi = 300, height = 13, width = 13, bg = "white")
+ggsave("contams3210.png", contams3, dpi = 300, height = 13, width = 13, bg = "white")
 
 
 # # per pool
@@ -830,7 +949,8 @@ ggsave("contams321.png", contams3, dpi = 300, height = 13, width = 13, bg = "whi
 # ggsave("missing.png", missing, dpi = 300, height = 15, width = 15, bg = "white")
 
 
-### PROPOSED THRESHOLDS
+
+### PROPOSED THRESHOLDS------------
 
 #remove alleles with freq of 1 (possible mislabelling of controls)
 CONTAMINANTS_less_than_1 <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus< 1,]
@@ -838,43 +958,43 @@ CONTAMINANTS_less_than_1 <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus< 1,]
 
 # all pools together
 
-# interpret as for 50%, 50% of contaminants appear at a freq of n;
-contam_thresholds <- as.data.frame(t(t(quantile(CONTAMINANTS_less_than_1$norm.reads.locus, probs= c(0.5, 0.75, 0.9, 0.95, 0.99)))))
-
-colnames(contam_thresholds)[1] <- "MAF_threshold"
-
-contam_thresholds
-
-write.csv(contam_thresholds, "comtam_thresholds2.csv")
-
-
-thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
-  geom_histogram(bins = 100, alpha = 0.5, position = "identity", fill = "steelblue", color = "white") +
-  geom_vline(data = as.data.frame(contam_thresholds), 
-             aes(xintercept = MAF_threshold, color = factor(rownames(contam_thresholds))), 
-             linetype = "solid", size = 1) +
-  scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
-  labs(
-    title = "",
-    x = "In-sample allele frequency",
-    y = "Non-reference alleles"
-  ) +
-  theme_minimal() +
-  guides(color = guide_legend(title = "% Non-ref alleles\n    eliminated")) +
-  theme(
-    legend.position = "right",
-    legend.title = element_text(size = 10),
-    legend.text = element_text(size = 8)
-  )
-
-thresholds
-
-ggsave("thresholds2.png", thresholds, height = 5, width = 8, dpi = 300, bg = "white")
+## interpret as for 50%, 50% of contaminants appear at a freq of n;
+# contam_thresholds <- as.data.frame(t(t(quantile(CONTAMINANTS_less_than_1$norm.reads.locus, probs= c(0.5, 0.75, 0.9, 0.95, 0.99)))))
+# 
+# colnames(contam_thresholds)[1] <- "MAF_threshold"
+# 
+# contam_thresholds
+# 
+# write.csv(contam_thresholds, "comtam_thresholds2.csv")
+# 
+# 
+# thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
+#   geom_histogram(bins = 100, alpha = 0.5, position = "identity", fill = "steelblue", color = "white") +
+#   geom_vline(data = as.data.frame(contam_thresholds), 
+#              aes(xintercept = MAF_threshold, color = factor(rownames(contam_thresholds))), 
+#              linetype = "solid", size = 1) +
+#   scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
+#   labs(
+#     title = "",
+#     x = "In-sample allele frequency",
+#     y = "Non-reference alleles"
+#   ) +
+#   theme_minimal() +
+#   guides(color = guide_legend(title = "% Non-ref alleles\n    eliminated")) +
+#   theme(
+#     legend.position = "right",
+#     legend.title = element_text(size = 10),
+#     legend.text = element_text(size = 8)
+#   )
+# 
+# thresholds
+# 
+# ggsave("thresholds2.png", thresholds, height = 5, width = 8, dpi = 300, bg = "white")
 
 
 ## by pool
 contam_thresholds_pools <- CONTAMINANTS_less_than_1 %>%
-  group_by(pool) %>%
+  group_by(lab, parasitemia) %>%
   summarise(
     `50%` = quantile(norm.reads.locus, probs = 0.5, na.rm = TRUE),
     `75%` = quantile(norm.reads.locus, probs = 0.75, na.rm = TRUE),
@@ -905,7 +1025,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
   geom_vline(data = contam_thresholds_long, 
              aes(xintercept = MAF_threshold, color = percentile), 
              linetype = "solid", size = 1) +
-  facet_wrap(~ pool, ncol = 2) +  # Facet by pool
+  facet_grid(lab~parasitemia) +  # Facet by pool
   scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
   labs(
     title = "",
@@ -916,16 +1036,19 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
   
   guides(color = guide_legend(title = "% Non-ref alleles\n    eliminated")) +
   theme(
-    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 1),
+    axis.text.y = element_text(size = 12, angle = 0, hjust = 1),
     axis.title.x = element_text(size = 14),        
-    axis.title.y = element_text(size = 14),
+    axis.title.y = element_text(size = 14),     
     strip.text = element_text(size = 17, face = "bold"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    legend.text = element_text(size = 12),   # Increases legend text size
+    legend.title = element_text(size = 14) 
   )
 
 thresholds
 
-ggsave("thresholds2_pools.png", thresholds, height = 8, width = 12, dpi = 300, bg = "white")
+ggsave("thresholds23_pools.png", thresholds, height = 8, width = 12, dpi = 300, bg = "white")
 
 
 
@@ -933,9 +1056,22 @@ ggsave("thresholds2_pools.png", thresholds, height = 8, width = 12, dpi = 300, b
 ### EXPLORE FIXED CONTAMINANTS --------
 fixed_contams <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]
 
-table(fixed_contams$pool)
-table(fixed_contams$locus)
-table(fixed_contams$Category)
+fixed_contams$allele <-  gsub(".*__", "", fixed_contams$allele)
+fixed_contams$sampleID <-  gsub("__.*$", "", fixed_contams$sampleID)
+
+fixed_contams_summary <- fixed_contams %>% 
+  group_by(sampleID, run, lab, parasitemia, pool, locus) %>% 
+  summarise(
+    n_nonref_alleles_fixed = n_distinct(allele),  # Count unique alleles
+    unique_alleles = toString(unique(allele)),    # Convert list to a comma-separated string
+    .groups = "drop"  # Ungroup after summarization
+  ) %>%
+  arrange(lab, locus, run, pool, parasitemia, n_nonref_alleles_fixed)
+
+fixed_contams_summary
+
+
+write.csv(fixed_contams_summary, "fixed_contams_summary.csv", row.names = F)
 
 
 
