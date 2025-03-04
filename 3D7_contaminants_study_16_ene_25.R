@@ -93,7 +93,7 @@ merged_dfs <- merged_dfs[!grepl("-1AB$|1B2", merged_dfs$locus),]
 
 
 ########### 6) REMOVE KNOWN CONTAMINATED RUNS
-#merged_dfs <- merged_dfs[!merged_dfs$run %in% c("ASINT_NextSeq01","ASINT_NextSeq04", "ASINT_NextSeq05", "BOH22_NextSeq04", "ICAE_NextSeq01_demux_"), ]
+merged_dfs <- merged_dfs[!merged_dfs$run %in% c("ASINT_NextSeq01", "ICAE_NextSeq01_demux_"), ]
 
 
 ########### 7) REMOVE ALLELES WITH LESS THAN 10 READS
@@ -167,6 +167,7 @@ colnames(allele_df) <- c("allele", "count")
 allele_df$allele <- factor(allele_df$allele, levels = allele_df$allele[order(allele_df$count)])
 
 length(unique(allele_df$allele))
+length(unique(CONTAMINANTS$locus))
 
 #put the pool variable
 allele_df <- left_join(allele_df, controls_data[c("allele", "pool")], by = "allele") %>% distinct()
@@ -185,7 +186,7 @@ contam_alleles <- ggplot(
   geom_bar(stat = "identity", fill = "skyblue", color = "white") +
   labs(
     x = "Allele",
-    y = "Non-reference alleles",
+    y = "Count",
     title = ""
   ) +
   theme_minimal() +
@@ -202,6 +203,16 @@ contam_alleles <- ggplot(
 contam_alleles
 
 ggsave("contam_alleles2.png", contam_alleles, dpi = 300, height = 14, width = 27, bg = "white")
+
+
+# save contaminant allele df
+CONTAMINANTS_output <- CONTAMINANTS %>%
+  separate(sampleID, into = c("sampleID", "run"), sep = "__", extra = "merge") %>%
+  select(-allele)
+
+CONTAMINANTS_output <- CONTAMINANTS_output %>% arrange(lab, run, pool, sampleID, Category)
+
+write.csv(CONTAMINANTS_output, "CONTAMINANTS_output.csv", row.names = F)
 
 
 
@@ -721,7 +732,7 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID, y = count, fill = n
   scale_fill_manual(values = c( "#e31a1c", "#1f78b4", "black")) +  # Custom colors
   labs(
     x = "Control",
-    y = "% Non-reference alleles",
+    y = "Non-reference alleles",
     fill = "Source",
     title = ""
   ) +
@@ -894,7 +905,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
   geom_vline(data = contam_thresholds_long, 
              aes(xintercept = MAF_threshold, color = percentile), 
              linetype = "solid", size = 1) +
-  facet_wrap(~ pool) +  # Facet by pool
+  facet_wrap(~ pool, ncol = 2) +  # Facet by pool
   scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
   labs(
     title = "",
