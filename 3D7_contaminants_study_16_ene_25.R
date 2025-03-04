@@ -1062,11 +1062,11 @@ fixed_contams$sampleID <-  gsub("__.*$", "", fixed_contams$sampleID)
 fixed_contams_summary <- fixed_contams %>% 
   group_by(sampleID, run, lab, parasitemia, pool, locus) %>% 
   summarise(
-    n_nonref_alleles_fixed = n_distinct(allele),  # Count unique alleles
+    #n_nonref_alleles_fixed = n_distinct(allele),  # Count unique alleles
     unique_alleles = toString(unique(allele)),    # Convert list to a comma-separated string
     .groups = "drop"  # Ungroup after summarization
   ) %>%
-  arrange(lab, locus, run, pool, parasitemia, n_nonref_alleles_fixed)
+  arrange(lab, locus, unique_alleles, run, pool, parasitemia)
 
 fixed_contams_summary
 
