@@ -8,6 +8,7 @@ library(tibble)
 library(reshape2)
 library(stringr)
 library(forcats)
+library(ggpubr)
 
 
 ####### 0) PARAMETERS AND INPUTS #######--------------------
@@ -162,10 +163,35 @@ contam_controls_per_lab/total_controls_per_lab #percentage contaminated runs per
 
 # *** ARE CONTAMINANT ALLELES REPEATED ACROSS RUNS? ***
 
-CONTAMINANTNS_SUMMARY <- CONTAMINANTS %>% group_by(lab, pool, parasitemia) %>% summarise(unique_nonref =length(unique(allele)))
+# CONTAMINANTNS_SUMMARY <- CONTAMINANTS %>% group_by(lab, pool, parasitemia) %>% summarise(unique_nonref =length(unique(allele)))
+# 
+# parasitemia_plots <- ggplot(CONTAMINANTNS_SUMMARY, aes(x = pool, y = unique_nonref, fill = parasitemia)) +
+#   geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+#   facet_wrap(~lab) +  # Facet by lab
+#   scale_fill_manual(values = c("High_Parasitemia" = "orange2", "Low_Parasitemia" = "green3")) +  # Custom colors
+#   labs(
+#     x = "Pool",
+#     y = "Unique Non-Ref Alleles",
+#     fill = "",
+#     title = ""
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(size = 15, angle = 0, hjust = 1),
+#     axis.title.x = element_text(size = 14),        
+#     strip.text = element_text(size = 17, face = "bold"),
+#     panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+#   )
+# 
+# parasitemia_plots
+# 
+# ggsave("parasitemia_plots.png", parasitemia_plots, dpi = 300, height = 5, width = 8, bg = "white")
 
-parasitemia_plots <- ggplot(CONTAMINANTNS_SUMMARY, aes(x = pool, y = unique_nonref, fill = parasitemia)) +
-  geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+
+CONTAMINANTNS_SUMMARY_2 <- CONTAMINANTS %>% group_by(lab, pool, parasitemia, run) %>% summarise(unique_nonref =length(unique(allele)))
+
+parasitemia_plots2 <- ggplot(CONTAMINANTNS_SUMMARY_2, aes(x = pool, y = unique_nonref, fill = parasitemia)) +
+  geom_boxplot() +  # Dodged bars for comparison
   facet_wrap(~lab) +  # Facet by lab
   scale_fill_manual(values = c("High_Parasitemia" = "orange2", "Low_Parasitemia" = "green3")) +  # Custom colors
   labs(
@@ -178,13 +204,21 @@ parasitemia_plots <- ggplot(CONTAMINANTNS_SUMMARY, aes(x = pool, y = unique_nonr
   theme(
     axis.text.x = element_text(size = 15, angle = 0, hjust = 1),
     axis.title.x = element_text(size = 14),        
+    axis.title.y = element_text(size = 14),   
     strip.text = element_text(size = 17, face = "bold"),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
-  )
+  )+
+  stat_compare_means(aes(group = parasitemia),
+                     method = "kruskal.test",
+                     label = "p.signif",
+                     label.y = max(CONTAMINANTNS_SUMMARY_2$unique_nonref) * 1.05,
+                     size = 5)
 
-parasitemia_plots
 
-ggsave("parasitemia_plots.png", parasitemia_plots, dpi = 300, height = 5, width = 8, bg = "white")
+parasitemia_plots2
+
+ggsave("parasitemia_plots2.png", parasitemia_plots2, dpi = 300, height = 6, width = 9, bg = "white")
+
 
 
 
@@ -865,7 +899,7 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID_plot, y = count, fil
 
 contams3
 
-ggsave("contams3210.png", contams3, dpi = 300, height = 13, width = 13, bg = "white")
+ggsave("contams3210.png", contams3, dpi = 300, height = 12, width = 15, bg = "white")
 
 
 # # per pool
