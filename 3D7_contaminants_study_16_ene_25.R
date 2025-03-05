@@ -127,7 +127,7 @@ controls_data <- controls_data[!controls_data$sampleID %in% mislabelled_controls
 controls_data %>% group_by(sampleID) %>% summarise(total_reads= sum(reads)) %>% arrange(total_reads) # check if all controls have > 10000 reads
 
 #asign parasitemia categories. 10K and 100K = high; 1K and 100 = low.
-controls_data$parasitemia <- ifelse(grepl("100K|10K", controls_data$sampleID, ignore.case = T), "High_Parasitemia","Low_Parasitemia")
+controls_data$parasitemia <- ifelse(grepl("100K|10K", controls_data$sampleID, ignore.case = T), "High","Low")
 
 
 TOTAL_RUNS <- length(unique(controls_data$run))
@@ -188,16 +188,16 @@ contam_controls_per_lab/total_controls_per_lab #percentage contaminated runs per
 # ggsave("parasitemia_plots.png", parasitemia_plots, dpi = 300, height = 5, width = 8, bg = "white")
 
 
-CONTAMINANTNS_SUMMARY_2 <- CONTAMINANTS %>% group_by(lab, pool, parasitemia, run) %>% summarise(unique_nonref =length(unique(allele)))
+CONTAMINANTNS_SUMMARY_2 <- CONTAMINANTS %>% group_by(lab, pool, parasitemia, run, sampleID) %>% summarise(unique_nonref =length(unique(allele)))
 
 parasitemia_plots2 <- ggplot(CONTAMINANTNS_SUMMARY_2, aes(x = pool, y = unique_nonref, fill = parasitemia)) +
   geom_boxplot() +  # Dodged bars for comparison
   facet_wrap(~lab) +  # Facet by lab
-  scale_fill_manual(values = c("High_Parasitemia" = "orange2", "Low_Parasitemia" = "green3")) +  # Custom colors
+  scale_fill_manual(values = c("High" = "orange2", "Low" = "green3")) +  # Custom colors
   labs(
     x = "Pool",
     y = "Unique Non-Ref Alleles",
-    fill = "",
+    fill = "Parasitemia",
     title = ""
   ) +
   theme_minimal() +
@@ -222,20 +222,22 @@ ggsave("parasitemia_plots2.png", parasitemia_plots2, dpi = 300, height = 6, widt
 
 
 
-ALLELE_COUNT <-  CONTAMINANTS %>% group_by(lab, pool, parasitemia, allele) %>% summarise(count =length(unique(allele)))
+ALLELE_COUNT <-  CONTAMINANTS %>% group_by(lab, pool, parasitemia, allele) %>% summarise(count =length(allele))
 
 length(unique(ALLELE_COUNT$allele))
 length(unique(CONTAMINANTS$locus))
 
-ALLELE_COUNT <- ALLELE_COUNT %>%
+ALLELE_COUNT_above1 <- ALLELE_COUNT[ALLELE_COUNT$count > 1,]
+
+ALLELE_COUNT_above1 <- ALLELE_COUNT_above1 %>%
   mutate(allele = fct_reorder(allele, -as.numeric(factor(pool))))
 
-allele_counts_plot <- ggplot(ALLELE_COUNT, aes(x = allele, y = count, fill = pool)) +
-  geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+allele_counts_plot <- ggplot(ALLELE_COUNT_above1, aes(x = allele, y = count, fill = pool)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +  # Dodged bars for comparison
   facet_grid(lab ~ parasitemia, scales = "free_y", space="free_y") +  # Facet by lab and pool
   scale_fill_manual(values = c("1A" = "red", "1B" = "blue", "2" = "green")) +  # Custom colors
   labs(
-    x = "Allele",
+    x = "Non-Reference Allele",
     y = "Count",
     fill = "Pool",
     title = ""
@@ -244,7 +246,8 @@ allele_counts_plot <- ggplot(ALLELE_COUNT, aes(x = allele, y = count, fill = poo
   theme(
     axis.text.x = element_text(size = 10, angle = 90, hjust = 1),
     axis.text.y = element_text(size = 7),
-    axis.title.x = element_text(size = 14),        
+    axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14),    
     strip.text = element_text(size = 17, face = "bold"),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
     legend.text = element_text(size = 12),   # Increases legend text size
@@ -254,7 +257,7 @@ allele_counts_plot <- ggplot(ALLELE_COUNT, aes(x = allele, y = count, fill = poo
 
 allele_counts_plot
 
-ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 18, width = 20, bg = "white")
+ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 5, width = 20, bg = "white")
 
 
 # ALLELE_COUNT <- table(CONTAMINANTS$allele)
@@ -311,7 +314,7 @@ CONTAMINANTS_output <- CONTAMINANTS_output %>% arrange(lab, run, pool, sampleID,
 write.csv(CONTAMINANTS_output, "CONTAMINANTS_output.csv", row.names = F)
 
 
-LOCI_COUNT <-  CONTAMINANTS %>% group_by(lab, pool, parasitemia, locus) %>% summarise(count =length(unique(locus)))
+LOCI_COUNT <-  CONTAMINANTS %>% group_by(lab, pool, parasitemia, locus) %>% summarise(count =length(unique(allele)))
 
 length(unique(LOCI_COUNT$locus))
 
@@ -319,11 +322,11 @@ LOCI_COUNT <- LOCI_COUNT %>%
   mutate(locus = fct_reorder(locus, -as.numeric(factor(pool))))
 
 loci_counts_plot <- ggplot(LOCI_COUNT, aes(x = locus, y = count, fill = pool)) +
-  geom_bar(stat = "identity", position = "dodge") +  # Dodged bars for comparison
+  geom_bar(stat = "identity", position = "dodge", color = "black") +  # Dodged bars for comparison
   facet_grid(lab ~ parasitemia, scales = "free_y", space="free_y") +  # Facet by lab and pool
   scale_fill_manual(values = c("1A" = "red", "1B" = "blue", "2" = "green")) +  # Custom colors
   labs(
-    x = "Allele",
+    x = "Non-reference allele",
     y = "Count",
     fill = "Pool",
     title = ""
@@ -332,7 +335,8 @@ loci_counts_plot <- ggplot(LOCI_COUNT, aes(x = locus, y = count, fill = pool)) +
   theme(
     axis.text.x = element_text(size = 10, angle = 90, hjust = 1),
     axis.text.y = element_text(size = 7),
-    axis.title.x = element_text(size = 14),        
+    axis.title.x = element_text(size = 14),       
+    axis.title.y = element_text(size = 14),    
     strip.text = element_text(size = 17, face = "bold"),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
     legend.text = element_text(size = 12),   # Increases legend text size
@@ -871,7 +875,7 @@ contam_procedence_long <- contam_procedence_results %>%
 contam_procedence_long$sampleID_plot <- paste0(contam_procedence_long$sampleID, "__", contam_procedence_long$run)
 
 contam_procedence_long <- contam_procedence_long %>%
-  mutate(sampleID_plot = fct_reorder(sampleID_plot, as.numeric(factor(run))))
+  mutate(sampleID_plot = fct_reorder(sampleID_plot, -as.numeric(factor(run))))
 
 # Create stacked bar plot
 contams3 <- ggplot(contam_procedence_long, aes(x = sampleID_plot, y = count, fill = nonref_type)) +
@@ -1028,7 +1032,7 @@ CONTAMINANTS_less_than_1 <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus< 1,]
 
 ## by pool
 contam_thresholds_pools <- CONTAMINANTS_less_than_1 %>%
-  group_by(lab, parasitemia) %>%
+  group_by(lab, parasitemia, pool) %>%
   summarise(
     `50%` = quantile(norm.reads.locus, probs = 0.5, na.rm = TRUE),
     `75%` = quantile(norm.reads.locus, probs = 0.75, na.rm = TRUE),
@@ -1059,7 +1063,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
   geom_vline(data = contam_thresholds_long, 
              aes(xintercept = MAF_threshold, color = percentile), 
              linetype = "solid", size = 1) +
-  facet_grid(lab~parasitemia) +  # Facet by pool
+  facet_grid(lab~parasitemia~pool) +  # Facet by pool
   scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
   labs(
     title = "",
