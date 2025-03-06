@@ -77,48 +77,48 @@ merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar) #
 merged_dfs$pseudo_cigar <- ifelse(merged_dfs$pseudo_cigar == "" | is.na(merged_dfs$pseudo_cigar), ".", merged_dfs$pseudo_cigar) # if empty, add "." since it was reference
 
 #aggregate unmasked sequences
-merged_dfs <- merged_dfs %>% group_by(sampleID, locus, pseudo_cigar, run, Category) %>% summarise(reads = sum(reads), norm.reads.locus = sum(norm.reads.locus))
+merged_dfs_agg <- merged_dfs %>% group_by(sampleID, locus, pseudo_cigar, run, Category) %>% summarise(reads = sum(reads), norm.reads.locus = sum(norm.reads.locus))
 
 
 ########## 3) REMOVE INDELS ################-------
 # remove indels
-merged_dfs <- merged_dfs[!grepl("I=", merged_dfs$pseudo_cigar),] #remove alleles with I (insertion)
-merged_dfs <- merged_dfs[!grepl("D=", merged_dfs$pseudo_cigar),] #remove alleles with D (deletion)
+merged_dfs_agg <- merged_dfs_agg[!grepl("I=", merged_dfs_agg$pseudo_cigar),] #remove alleles with I (insertion)
+merged_dfs_agg <- merged_dfs_agg[!grepl("D=", merged_dfs_agg$pseudo_cigar),] #remove alleles with D (deletion)
 
 
 ########### 4) 1% MAF FILTER
-merged_dfs <- merged_dfs[merged_dfs$norm.reads.locus > 0.01,]
+merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$norm.reads.locus > 0.01,]
 
 
 ########### 5) REMOVE POOLS 1AB AND 1B2
-merged_dfs <- merged_dfs[!grepl("-1AB$|1B2", merged_dfs$locus),]
+merged_dfs_agg <- merged_dfs_agg[!grepl("-1AB$|1B2", merged_dfs_agg$locus),]
 
 
 ########### 6) REMOVE KNOWN CONTAMINATED RUNS
-merged_dfs <- merged_dfs[!merged_dfs$run %in% c("ASINT_NextSeq01", "ICAE_NextSeq01_demux_"), ]
+merged_dfs_agg <- merged_dfs_agg[!merged_dfs_agg$run %in% c("ASINT_NextSeq01", "ICAE_NextSeq01_demux_"), ]
 
 
 ########### 7) REMOVE ALLELES WITH LESS THAN 10 READS
-merged_dfs <- merged_dfs[merged_dfs$reads > 10,]
+merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$reads > 10,]
 
 
 
 ########## 2) CREATE/MODIFY USEFUL VARIABLES ################-------
 
 #make pool variable
-merged_dfs$pool <-  str_extract(merged_dfs$locus, "[^-]+$")
+merged_dfs_agg$pool <-  str_extract(merged_dfs_agg$locus, "[^-]+$")
 
 #create allele column
-merged_dfs$allele <- paste0(merged_dfs$locus, "__", merged_dfs$pseudo_cigar)
+merged_dfs_agg$allele <- paste0(merged_dfs_agg$locus, "__", merged_dfs_agg$pseudo_cigar)
 
 # add lab variable
-merged_dfs$lab <- ifelse(grepl("000000000", merged_dfs$run), "CISM", "ISG")
+merged_dfs_agg$lab <- ifelse(grepl("000000000", merged_dfs_agg$run), "CISM", "ISG")
 
 
 ########## 5) EXTRACT CONTROL DATA ################-------
-controls_data <- merged_dfs[grepl("3d7", merged_dfs$sampleID, ignore.case = TRUE) &
-                              !grepl("plus|hb3|dd2", merged_dfs$sampleID, ignore.case = TRUE),] 
-                              #,]& !grepl("000000000", merged_dfs$sampleID, ignore.case = TRUE),] # remove CISM runs
+controls_data <- merged_dfs_agg[grepl("3d7", merged_dfs_agg$sampleID, ignore.case = TRUE) &
+                              !grepl("plus|hb3|dd2", merged_dfs_agg$sampleID, ignore.case = TRUE),] 
+                              #,]& !grepl("000000000", merged_dfs_agg$sampleID, ignore.case = TRUE),] # remove CISM runs
 
 #remove known mislabelled controls:
 mislabelled_controls <- c("N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5", "N3D7100KA_S7__BOH22_Nextseq01", "N3D710kA_S56__BOH22_Nextseq01")
@@ -193,7 +193,7 @@ CONTAMINANTNS_SUMMARY_2 <- CONTAMINANTS %>% group_by(lab, pool, parasitemia, run
 parasitemia_plots2 <- ggplot(CONTAMINANTNS_SUMMARY_2, aes(x = pool, y = unique_nonref, fill = parasitemia)) +
   geom_boxplot() +  # Dodged bars for comparison
   facet_wrap(~lab) +  # Facet by lab
-  scale_fill_manual(values = c("High" = "orange2", "Low" = "green3")) +  # Custom colors
+  scale_fill_manual(values = c("High" = "orchid", "Low" = "lightblue")) +  # Custom colors
   labs(
     x = "Pool",
     y = "Unique Non-Ref Alleles",
@@ -219,6 +219,35 @@ parasitemia_plots2
 
 ggsave("parasitemia_plots2.png", parasitemia_plots2, dpi = 300, height = 6, width = 9, bg = "white")
 
+
+parasitemia_plots3 <- ggplot(CONTAMINANTNS_SUMMARY_2[CONTAMINANTNS_SUMMARY_2$parasitemia == "High",], aes(x = pool, y = unique_nonref, fill = lab)) +
+  geom_boxplot() +  # Dodged bars for comparison
+  facet_wrap(~parasitemia) +  # Facet by lab
+  scale_fill_manual(values = c("ISG" = "orange2", "CISM" = "green3")) +  # Custom colors
+  labs(
+    x = "Pool",
+    y = "Unique Non-Ref Alleles",
+    fill = "Lab",
+    title = ""
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 15, angle = 0, hjust = 1),
+    axis.title.x = element_text(size = 14),        
+    axis.title.y = element_text(size = 14),   
+    strip.text = element_text(size = 17, face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1) 
+  )+
+  stat_compare_means(aes(group = lab),
+                     method = "kruskal.test",
+                     label = "p.signif",
+                     label.y = max(CONTAMINANTNS_SUMMARY_2[CONTAMINANTNS_SUMMARY_2$parasitemia == "High",]$unique_nonref) * 1.05,
+                     size = 5)
+
+
+parasitemia_plots3
+
+ggsave("parasitemia_plots3.png", parasitemia_plots3, dpi = 300, height = 6, width = 7, bg = "white")
 
 
 
@@ -680,7 +709,7 @@ print(paste("There were", CONTAMINATED_CONTROLS_FREQ1, " controls with at least 
 # *** CONTAMINANT ALLELES IN FIELD SAMPLES FROM EACH RUN?  *** -------------------
 
 # remove controls from original data AND keep runs from which the controls used in the study are taken (for instance, nanna's run is not used because it doesn't distinguish controls, etc.)
-field_data <- merged_dfs[!merged_dfs$sampleID %in% CONTAMINANTS$sampleID,]
+field_data <- merged_dfs_agg[!merged_dfs_agg$sampleID %in% CONTAMINANTS$sampleID,]
 field_data <- field_data[field_data$run %in% unique(controls_data$run),]
 
 SAMPLES <- unique(CONTAMINANTS$sampleID)
@@ -1111,6 +1140,29 @@ fixed_contams_summary
 
 write.csv(fixed_contams_summary, "fixed_contams_summary.csv", row.names = F)
 
+#asv for andres
+fixed_contams <- CONTAMINANTS[CONTAMINANTS$norm.reads.locus == 1,]
+fixed_contams_asv<- merge(fixed_contams, merged_dfs[c("sampleID", "locus", "run", "Category", "reads", "pseudo_cigar","norm.reads.locus", "asv")], by = c("sampleID", "locus", "run", "Category", "reads", "pseudo_cigar","norm.reads.locus"))
+
+fixed_contams_asv <- fixed_contams_asv %>% arrange(lab, locus, pseudo_cigar, run, pool, parasitemia)
+
+write.csv(fixed_contams_asv, "fixed_contams_summary_ASV.csv", row.names = F)
+
+
+#align the sequences from amplicon Pf3D7_07_v3-403801-404052-1B
+library(Biostrings)
+library(DECIPHER)
+
+amp <- fixed_contams_asv[fixed_contams_asv$locus == "Pf3D7_07_v3-403801-404052-1B",]
+
+seqs <- DNAStringSet(amp$asv)
+names(seqs) <- paste(amp$sampleID, amp$allele)
+
+# Align sequences
+aligned_seqs <- AlignSeqs(seqs)
+
+# View the aligned sequences
+BrowseSeqs(aligned_seqs)
 
 
 # # missing alleles
