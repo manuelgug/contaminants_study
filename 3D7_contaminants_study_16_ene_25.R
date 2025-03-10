@@ -71,6 +71,10 @@ read_counts_above_10K_reads <- read_counts_above_10K_reads[read_counts_above_10K
 merged_dfs <- merged_dfs[merged_dfs$sampleID %in% read_counts_above_10K_reads$sampleID, ]
 
 
+### keep pool 1A
+merged_dfs <- merged_dfs[grepl("-1A$", merged_dfs$locus),]
+
+
 ########## 2) CONVERT MASKING INTO REF ################-------
 # ignore masking, turn it to ref (.)
 merged_dfs$pseudo_cigar <-  gsub("\\d+\\+[^N]*N", "", merged_dfs$pseudo_cigar) #remove masking
@@ -286,7 +290,7 @@ allele_counts_plot <- ggplot(ALLELE_COUNT_above1, aes(x = allele, y = count, fil
 
 allele_counts_plot
 
-ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 5, width = 20, bg = "white")
+ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 5, width = 10, bg = "white")
 
 
 # ALLELE_COUNT <- table(CONTAMINANTS$allele)
@@ -1092,7 +1096,7 @@ thresholds <- ggplot(CONTAMINANTS_less_than_1, aes(x = norm.reads.locus)) +
   geom_vline(data = contam_thresholds_long, 
              aes(xintercept = MAF_threshold, color = percentile), 
              linetype = "solid", size = 1) +
-  facet_grid(lab~parasitemia~pool) +  # Facet by pool
+  facet_grid(lab~parasitemia) +  # Facet by pool
   scale_color_manual(name = "Thresholds", values = c("red", "blue", "green", "purple", "orange")) +
   labs(
     title = "",
