@@ -454,7 +454,7 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID_plot, y = count, fil
   ) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(size = 12, angle = 0, hjust = 1),
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1),
     axis.text.y = element_text(size = 12, angle = 0, hjust = 1),
     axis.title.x = element_text(size = 14),        
     axis.title.y = element_text(size = 14),     
@@ -467,7 +467,9 @@ contams3 <- ggplot(contam_procedence_long, aes(x = sampleID_plot, y = count, fil
 
 contams3
 
-ggsave("contams3210.png", contams3, dpi = 300, height = 12, width = 25, bg = "white")
+
+
+ggsave("contams3210.png", contams3, dpi = 300, height = 12, width = 20, bg = "white")
 
 
 
