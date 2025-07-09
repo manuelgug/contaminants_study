@@ -2,6 +2,7 @@
 
 library(dplyr)
 library(tidyr)
+library(data.table)
 
 
 
@@ -117,15 +118,28 @@ truth_dd2 <- truth[grepl("dd2", truth$Strain, ignore.case = T),]
 
 
 ################################
-### EXTRACT NON-REF ALLELES
+### EXTRACT NON-REF AND MISSING ALLELES
 ################################
 
+# nonref alleles
 nonref_3d7 <- setdiff(controls_3d7$allele, truth_3d7$allele)
 nonref_dd2 <- setdiff(controls_dd2$allele, truth_dd2$allele)
 
 controls_3d7_nonref_alleles <- controls_3d7[controls_3d7$allele %in% nonref_3d7, ]
 controls_dd2_nonref_alleles <- controls_dd2[controls_dd2$allele %in% nonref_dd2, ]
 
+# missing alleles, straight to the summary
+missing_3d7_summary <- controls_3d7 %>%
+  group_by(sampleID) %>%
+  summarise(
+    missing_alleles = sum(!truth_3d7$allele %in% allele))
+
+missing_dd2_summary <- controls_dd2 %>%
+  group_by(sampleID) %>%
+  summarise(
+    missing_alleles = sum(!truth_dd2$allele %in% allele))
+
+ALL_missing_alleles_SUMMARY <- rbind(missing_3d7_summary, missing_dd2_summary)
 
 
 ################################
@@ -136,8 +150,11 @@ controls_dd2_nonref_alleles <- controls_dd2[controls_dd2$allele %in% nonref_dd2,
 controls_3d7_nonref_alleles$source <- ifelse(controls_3d7_nonref_alleles$allele %in% field$allele, "field", "unknown")
 controls_dd2_nonref_alleles$source <- ifelse(controls_dd2_nonref_alleles$allele %in% field$allele, "field", "unknown")
 
-ALL_nonref_alleles <- do.call(rbind, Filter(function(x) is.data.frame(x) && nrow(x) > 0, 
-                                           list(controls_3d7_nonref_alleles, controls_dd2_nonref_alleles)))
+ALL_nonref_alleles  <- rbindlist(
+  list(controls_3d7_nonref_alleles, controls_dd2_nonref_alleles),
+  use.names = TRUE,
+  fill = TRUE
+)
 
 
 
@@ -148,9 +165,9 @@ ALL_nonref_alleles <- do.call(rbind, Filter(function(x) is.data.frame(x) && nrow
 SUMMARY <- ALL_nonref_alleles %>%
   group_by(sampleID) %>%
   summarise(
-    fixed_alleles = sum(norm.reads.locus == 1, na.rm = TRUE),
-    source_field = sum(source == "field", na.rm = TRUE),
-    source_unknown = sum(source == "unknown", na.rm = TRUE)
+    fixed_nonref_alleles = sum(norm.reads.locus == 1, na.rm = TRUE),
+    nonref_source_field = sum(source == "field", na.rm = TRUE),
+    nonref_source_unknown = sum(source == "unknown", na.rm = TRUE)
   )
 
 # add the clean controls just in case
@@ -160,11 +177,14 @@ all_controls <- unique(c(controls_3d7$sampleID, controls_dd2$sampleID))
 SUMMARY_COMPLETE <- tibble(sampleID = all_controls) %>%
   left_join(SUMMARY, by = "sampleID") %>%
   replace_na(list(
-    fixed_alleles = 0,
-    source_unknown = 0,
-    source_field = 0
+    fixed_nonref_alleles = 0,
+    nonref_source_field = 0,
+    nonref_source_unknown = 0
   )) 
 
+
+#merge with missing alleles
+merge(SUMMARY_COMPLETE, ALL_missing_alleles_SUMMARY, by = "sampleID")
 
 
 ################################
