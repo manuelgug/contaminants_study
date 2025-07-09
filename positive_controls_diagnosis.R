@@ -111,6 +111,11 @@ truth <- unique(truth)
 controls_3d7 <- data_agg[grepl("3d7", data_agg$sampleID, ignore.case = T),]
 controls_dd2 <- data_agg[grepl("dd2", data_agg$sampleID, ignore.case = T),]
 
+total_alleles_sequenced_3d7 <- controls_3d7 %>% group_by(sampleID) %>% summarise(alleles_sequenced = length(unique(allele)))
+total_alleles_sequenced_dd2 <- controls_dd2 %>% group_by(sampleID) %>% summarise(alleles_sequenced = length(unique(allele)))
+
+All_total_alleles_sequenced_SUMMARY <- rbind(total_alleles_sequenced_3d7, total_alleles_sequenced_dd2)
+
 # extract field data
 field <- data_agg[!grepl("3d7|dd2", data_agg$sampleID, ignore.case = TRUE), ]
 
@@ -149,21 +154,19 @@ successful_3d7_summary <- controls_3d7 %>%
   group_by(sampleID) %>%
   summarise(
     successful_alleles = sum(truth_3d7$allele %in% allele),
-    expected_alleles = length(unique(truth_3d7$allele)),
-    extra_alleles = length(unique(allele)) - expected_alleles)
+    expected_alleles = length(unique(truth_3d7$allele)))
 
 successful_dd2_summary <- controls_dd2 %>%
   group_by(sampleID) %>%
   summarise(
     successful_alleles = sum(truth_dd2$allele %in% allele),
-    expected_alleles = length(unique(truth_dd2$allele)),
-    extra_alleles = length(unique(allele)) - expected_alleles)
+    expected_alleles = length(unique(truth_dd2$allele)))
 
 ALL_successful_alleles_SUMMARY <- rbind(successful_3d7_summary, successful_dd2_summary)
+ALL_successful_alleles_SUMMARY <- merge(All_total_alleles_sequenced_SUMMARY, ALL_successful_alleles_SUMMARY, by = "sampleID")
 
 ALL_successful_missing_alleles_SUMMARY <- merge(ALL_successful_alleles_SUMMARY, ALL_missing_alleles_SUMMARY, by= "sampleID")
 
-ALL_successful_missing_alleles_SUMMARY$extra_alleles <- ifelse(ALL_successful_missing_alleles_SUMMARY$extra_alleles <0, 0, ALL_successful_missing_alleles_SUMMARY$extra_alleles )
 
 
 
@@ -221,3 +224,9 @@ SUMMARY_COMPLETE
 
 write.csv(SUMMARY_COMPLETE, "summary.csv", row.names = F)
 write.csv(ALL_nonref_alleles, "all_nonref_alleles.csv", row.names = F)
+
+### POTENTIAL OUTCOMES:
+#1) BAD SEQUENCING
+#2) MISLABELLING
+#3) CONTAMINATION
+
