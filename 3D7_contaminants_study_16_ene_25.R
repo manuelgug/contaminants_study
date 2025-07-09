@@ -123,10 +123,12 @@ controls_data <- merged_dfs_agg[grepl("3d7", merged_dfs_agg$sampleID, ignore.cas
                                   !grepl("plus|hb3|dd2", merged_dfs_agg$sampleID, ignore.case = TRUE), ]
 
 # Remove known mislabeled controls
-mislabeled_controls <- c("N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",
-                         "N3D7100KA_S7__BOH22_Nextseq01",
+mislabeled_controls <- c("N3D7100KA_S7__BOH22_Nextseq01",
                          "N3D710kA_S56__BOH22_Nextseq01",
-                         "N3D7-10K_S7_L001__231129_M07977_0018_000000000-KHHTK")
+                         "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5")
+# ,
+# "N3D7-10K_S7_L001__240530_M07977_0028_000000000-LBCV5",
+# "N3D7-10K_S7_L001__231129_M07977_0018_000000000-KHHTK"
 
 controls_data <- controls_data[!controls_data$sampleID %in% mislabeled_controls, ]
 
@@ -253,7 +255,7 @@ allele_counts_plot <- ggplot(ALLELE_COUNT, aes(x = allele, y = count, fill = poo
         legend.title = element_text(size = 14)) +
   coord_flip()
 
-ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 5, width = 10, bg = "white")
+ggsave("allele_counts_plot.png", allele_counts_plot, dpi = 300, height = 12, width = 10, bg = "white")
 
 # ============================================================================
 # 7) CONTAMINATION SOURCE ANALYSIS
@@ -266,6 +268,11 @@ CONTAMINANTS_output <- CONTAMINANTS %>%
   arrange(lab, run, pool, sampleID, Category)
 
 write.csv(CONTAMINANTS_output, "CONTAMINANTS_output.csv", row.names = FALSE)
+
+#save fixesd contaminants data
+FIXED_CONTAMINANTS <- CONTAMINANTS_output[CONTAMINANTS_output$norm.reads.locus == 1,]
+
+write.csv(FIXED_CONTAMINANTS, "FIXED_CONTAMINANTS_output.csv", row.names = FALSE)
 
 # Number of contaminants per control
 n_contams_per_run <- CONTAMINANTS %>%
@@ -490,6 +497,8 @@ contam_thresholds_pools <- CONTAMINANTS_less_than_1 %>%
             `95%` = quantile(norm.reads.locus, probs = 0.95, na.rm = TRUE),
             `99%` = quantile(norm.reads.locus, probs = 0.99, na.rm = TRUE),
             .groups = "drop")
+
+contam_thresholds_pools[4:8] <- sapply(contam_thresholds_pools[, 4:8], function(x) round(x, 3))
 
 write.csv(contam_thresholds_pools, "contamination_thresholds_by_pool.csv", row.names = FALSE)
 
