@@ -98,6 +98,9 @@ truth$pseudo_cigar <- ifelse(truth$pseudo_cigar == "" | is.na(truth$pseudo_cigar
 # Create allele column
 truth$allele <- paste0(truth$locus, "__", truth$pseudo_cigar)
 
+#aggregate
+truth <- unique(truth)
+
 
 
 ################################
@@ -113,7 +116,7 @@ field <- data_agg[!grepl("3d7|dd2", data_agg$sampleID, ignore.case = TRUE), ]
 
 # controls truth genotype
 truth_3d7 <- truth[grepl("3d7", truth$Strain, ignore.case = T),]
-truth_dd2 <- truth[grepl("dd2", truth$Strain, ignore.case = T),]
+truth_dd2 <- truth[grepl("dd2$", truth$Strain, ignore.case = T),]
 
 
 
@@ -140,6 +143,28 @@ missing_dd2_summary <- controls_dd2 %>%
     missing_alleles = sum(!truth_dd2$allele %in% allele))
 
 ALL_missing_alleles_SUMMARY <- rbind(missing_3d7_summary, missing_dd2_summary)
+
+# successfully sequenced alleles, straight to the summary
+successful_3d7_summary <- controls_3d7 %>%
+  group_by(sampleID) %>%
+  summarise(
+    successful_alleles = sum(truth_3d7$allele %in% allele),
+    expected_alleles = length(unique(truth_3d7$allele)),
+    extra_alleles = length(unique(allele)) - expected_alleles)
+
+successful_dd2_summary <- controls_dd2 %>%
+  group_by(sampleID) %>%
+  summarise(
+    successful_alleles = sum(truth_dd2$allele %in% allele),
+    expected_alleles = length(unique(truth_dd2$allele)),
+    extra_alleles = length(unique(allele)) - expected_alleles)
+
+ALL_successful_alleles_SUMMARY <- rbind(successful_3d7_summary, successful_dd2_summary)
+
+ALL_successful_missing_alleles_SUMMARY <- merge(ALL_successful_alleles_SUMMARY, ALL_missing_alleles_SUMMARY, by= "sampleID")
+
+ALL_successful_missing_alleles_SUMMARY$extra_alleles <- ifelse(ALL_successful_missing_alleles_SUMMARY$extra_alleles <0, 0, ALL_successful_missing_alleles_SUMMARY$extra_alleles )
+
 
 
 ################################
@@ -184,7 +209,10 @@ SUMMARY_COMPLETE <- tibble(sampleID = all_controls) %>%
 
 
 #merge with missing alleles
-merge(SUMMARY_COMPLETE, ALL_missing_alleles_SUMMARY, by = "sampleID")
+SUMMARY_COMPLETE <- merge(SUMMARY_COMPLETE, ALL_successful_missing_alleles_SUMMARY, by = "sampleID")
+
+SUMMARY_COMPLETE
+
 
 
 ################################
